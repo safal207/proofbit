@@ -54,6 +54,23 @@ class MarketMatrixTests(unittest.TestCase):
             {"proofbit-baseline", "proofbit-proofprocessor"},
         )
 
+    def test_external_hardware_has_explicit_pb_ai_01_adapter_target(self) -> None:
+        expected = {
+            "nvidia-gb200-nvl72": ("nvidia-cuda", "not_run"),
+            "google-tpu7x-ironwood": ("google-tpu-jax", "not_run"),
+            "cerebras-wse3": ("cerebras", "not_run"),
+            "aws-trainium3": ("aws-neuron", "not_run"),
+            "amd-mi450-series": ("amd-rocm", "not_run"),
+            "openai-jalapeno": (
+                "openai-jalapeno",
+                "not_run_no_public_adapter",
+            ),
+        }
+        by_id = {system["id"]: system for system in self.registry["systems"]}
+        for system_id, (adapter, status) in expected.items():
+            self.assertEqual(by_id[system_id]["pb_ai_01_adapter"], adapter)
+            self.assertEqual(by_id[system_id]["pb_ai_01_status"], status)
+
 
 if __name__ == "__main__":
     unittest.main()
