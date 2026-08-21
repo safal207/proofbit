@@ -1,0 +1,73 @@
+name: pb-trust-compose-11
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-11
+
+jobs:
+  isa-memory-enforcement:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: TC11 unit tests
+        run: python -m unittest tests.test_pb_trust_compose_11 -v
+
+      - name: Execute bounded exhaustive ISA search
+        run: |
+          python benchmarks/pb_trust_compose_11.py \
+            --max-program-len 5 \
+            --valid-iterations 10000 \
+            --rounds 11 \
+            --json > /tmp/pb_trust_compose_11.json
+          python -m json.tool /tmp/pb_trust_compose_11.json
+
+      - name: Validate frozen TC11 oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          r=json.loads(Path('/tmp/pb_trust_compose_11.json').read_text())
+          assert r['benchmark_id']=='PB-TRUST-COMPOSE-11'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-TC11/v0.1 isa-memory-enforcement'
+          assert r['max_attacker_program_len']==5
+          assert len(r['attacker_opcodes'])==8
+          assert len(r['attack_scenarios'])==6
+          assert r['primary_anti_strawman']=='tagged_capability_machine'
+          assert r['no_single_winner_score'] is True
+          assert len({tuple(x) for x in r['runtime_orders']})==3
+
+          expected_programs=224688
+          flat=r['search']['flat_value_machine']
+          cap=r['search']['tagged_capability_machine']
+          proof=r['search']['proofbit_machine']
+
+          for row in (flat,cap,proof):
+              assert row['total_programs_tested']==expected_programs
+              assert row['scenario_coverage']==6
+
+          assert flat['total_bypass_programs'] > 0
+          assert flat['scenarios_with_bypass']==6
+
+          assert cap['total_bypass_programs']==0
+          assert cap['scenarios_with_bypass']==0
+          assert proof['total_bypass_programs']==0
+          assert proof['scenarios_with_bypass']==0
+
+          for system,row in r['privileged_escape_probes'].items():
+              assert row['debug_bypass_effect'] is True
+              assert row['dma_bypass_effect'] is True
+              assert row['privileged_mint_effect'] is True
+              assert row['scored'] is False
+
+          assert r['logical_metadata']['tagged_capability_machine']['unforgeable_tag'] is True
+          assert r['logical_metadata']['proofbit_machine']['unforgeable_tag'] is True
+          assert 'model axiom' in r['tag_axiom']
+          PY
