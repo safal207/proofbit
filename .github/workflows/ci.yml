@@ -33,3 +33,5 @@ jobs:
         run: python benchmarks/pb_ai_01.py --backend cpu-python --decisions 10000 --contamination 0.10 --json
       - name: PB-AI-01 backend registry
         run: python benchmarks/pb_ai_01.py --list-backends --json
+      - name: PB-ARCH-01 reference smoke
+        run: python benchmarks/pb_arch_01.py --decisions 10000 --contamination 0.10 --json
