@@ -47,15 +47,32 @@ class PBTrustCompose02Tests(unittest.TestCase):
                 self.assertEqual(system["false_success_claims"], 0)
                 self.assertEqual(system["missed_valid_dispatches"], 0)
 
-    def test_wire_cost_scales_with_actual_boundary_count(self) -> None:
+    def test_request_payload_cost_scales_with_boundary_count(self) -> None:
         report = pb.build_report(trials=60, contamination_rate=0.20, boundaries=(1, 2))
         one, two = report["scale"]
         for name in ("software_json", "software_compact", "proofbit_compact"):
             first = one["systems"][name]
             second = two["systems"][name]
             self.assertEqual(second["payload_bytes"], first["payload_bytes"])
-            self.assertEqual(second["wire_bytes"], first["wire_bytes"] * 2)
-            self.assertEqual(second["transport_messages"], first["transport_messages"] * 2)
+            self.assertEqual(
+                second["request_ipc_payload_bytes"],
+                first["request_ipc_payload_bytes"] * 2,
+            )
+            self.assertEqual(
+                second["response_ipc_payload_bytes"],
+                first["response_ipc_payload_bytes"],
+            )
+            self.assertEqual(
+                first["total_ipc_payload_bytes"],
+                first["request_ipc_payload_bytes"] + first["response_ipc_payload_bytes"],
+            )
+
+    def test_transport_message_count_includes_result_edge(self) -> None:
+        report = pb.build_report(trials=30, contamination_rate=0.20, boundaries=(1, 2))
+        one, two = report["scale"]
+        for name in ("software_json", "software_compact", "proofbit_compact"):
+            self.assertEqual(one["systems"][name]["transport_messages"], 30 * 2)
+            self.assertEqual(two["systems"][name]["transport_messages"], 30 * 3)
 
     def test_proofbit_and_compact_software_use_same_wire_size(self) -> None:
         report = pb.build_report(trials=60, contamination_rate=0.20, boundaries=(1,))
@@ -63,6 +80,10 @@ class PBTrustCompose02Tests(unittest.TestCase):
         self.assertEqual(
             systems["proofbit_compact"]["mean_payload_bytes"],
             systems["software_compact"]["mean_payload_bytes"],
+        )
+        self.assertEqual(
+            systems["proofbit_compact"]["total_ipc_payload_bytes"],
+            systems["software_compact"]["total_ipc_payload_bytes"],
         )
 
 
