@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feat/pb-transition-01-morphos
 
 jobs:
   test:
