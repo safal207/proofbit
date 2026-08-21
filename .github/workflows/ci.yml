@@ -27,3 +27,5 @@ jobs:
         run: python benchmarks/cache_sweep.py --requests 10000 --rounds 2 --json
       - name: Contamination sweep smoke
         run: python benchmarks/contamination_sweep.py --iterations 20000 --rounds 1 --json
+      - name: Market matrix smoke
+        run: python benchmarks/market_matrix.py --json
