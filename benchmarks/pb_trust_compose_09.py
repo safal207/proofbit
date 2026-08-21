@@ -140,6 +140,9 @@ def run_once(system, root:Path, valid_count:int, td:Path):
             try: send(proc,{"op":"shutdown"})
             except Exception: pass
         proc.wait(timeout=5)
+        for stream in (proc.stdin,proc.stdout,proc.stderr):
+            if stream is not None:
+                stream.close()
     return {"attacks":attacks,"valid_path":perf,"worker_stats":stats,
             "effects_file_bytes":effects.stat().st_size if effects.exists() else 0}
 
