@@ -10,9 +10,10 @@ competent implementations of the same frozen trust oracle:
 3. compact binary ProofBit envelope validated through ProofProcessor.
 
 Every implementation performs real encode -> process transport -> decode work.
-The benchmark measures correctness, wire bytes, wall-clock throughput, and the
-number of transport/validation operations. It is a software/IPC reference
-benchmark, not a silicon, network, energy, or cryptographic benchmark.
+The benchmark measures correctness, application payload bytes carried by IPC,
+wall-clock throughput, and transport/validation operations. It is a
+software/IPC reference benchmark, not a silicon, network, energy, or
+cryptographic benchmark.
 """
 
 from __future__ import annotations
@@ -367,15 +368,16 @@ def _run_pipeline(
     encoder: Callable[[Envelope], bytes] = encode_json if codec == "json" else encode_compact
     per_kind = {kind: _new_kind_metrics() for kind in ("VALID", *FAULT_KINDS)}
     payload_bytes = 0
-    wire_bytes = 0
+    request_ipc_payload_bytes = 0
+    response_ipc_payload_bytes = RESULT.size * len(rows)
     transport_messages = 0
     started = time.perf_counter_ns()
     try:
         for row in rows:
             payload = encoder(envelope(row))
             payload_bytes += len(payload)
-            wire_bytes += len(payload) * boundaries
-            transport_messages += boundaries
+            request_ipc_payload_bytes += len(payload) * boundaries
+            transport_messages += boundaries + 1
             parent_send.send_bytes(payload)
             result = parent_recv.recv_bytes()
             dispatched, terminal = RESULT.unpack(result)
@@ -399,6 +401,7 @@ def _run_pipeline(
     false_success = sum(item["false_success_claims"] for item in per_kind.values())
     missed = sum(item["missed_valid_dispatches"] for item in per_kind.values())
     seconds = elapsed_ns / 1_000_000_000
+    total_ipc_payload_bytes = request_ipc_payload_bytes + response_ipc_payload_bytes
     return {
         "architecture": "ProofBit" if proofbit else "Conventional CPU / software trust envelope",
         "implementation": (
@@ -424,13 +427,16 @@ def _run_pipeline(
         "trials_per_sec": trials / seconds if seconds else 0.0,
         "payload_bytes": payload_bytes,
         "mean_payload_bytes": payload_bytes / trials,
-        "wire_bytes": wire_bytes,
+        "request_ipc_payload_bytes": request_ipc_payload_bytes,
+        "response_ipc_payload_bytes": response_ipc_payload_bytes,
+        "total_ipc_payload_bytes": total_ipc_payload_bytes,
+        "mean_total_ipc_payload_bytes_per_trial": total_ipc_payload_bytes / trials,
         "transport_messages": transport_messages,
-        "mean_wire_bytes_per_trial": wire_bytes / trials,
         "validation_boundaries": trials,
         "claim_boundary": (
-            "Real local process IPC using multiprocessing Pipe. Transport is same-host "
-            "kernel IPC, not network/RPC, silicon, or cryptographic verification."
+            "Real local process IPC using multiprocessing Pipe. Byte counters cover "
+            "application payloads passed to send_bytes/recv_bytes, not Pipe framing, "
+            "kernel copies, network packets, silicon, or cryptographic verification."
         ),
     }
 
@@ -483,7 +489,7 @@ def build_report(
         "protocol": PROTOCOL,
         "scope": (
             "same-host real process IPC trust-envelope transport; correctness first, "
-            "then actual encoded bytes and end-to-end wall-clock throughput"
+            "then encoded application payload bytes and end-to-end wall-clock throughput"
         ),
         "trials": trials,
         "contamination_rate": contamination_rate,
@@ -491,20 +497,22 @@ def build_report(
         "fault_counts": fault_counts,
         "boundaries": list(normalized),
         "compact_record_bytes": COMPACT.size,
+        "result_record_bytes": RESULT.size,
         "scale": scale,
         "no_single_winner_score": True,
         "comparison_order": [
             "oracle correctness",
             "unsafe authorization / false-success behavior",
             "statement binding",
-            "actual encoded payload bytes",
-            "actual local IPC wire bytes",
+            "actual encoded request payload bytes",
+            "application payload bytes carried across real local IPC edges",
             "end-to-end process IPC throughput",
         ],
         "caveats": [
             "software_compact is the anti-strawman binary control and uses the same compact record as ProofBit",
             "multiprocessing Pipe is local IPC, not network RPC",
             "worker startup is outside timed region but process scheduling is inside transport latency",
+            "byte counters exclude multiprocessing framing and kernel-level copies",
             "compact ids are benchmark registry ids, not cryptographic statement hashes",
             "no cryptographic proof verification is measured",
             "results are not processor, silicon, area, energy, or universal crossover claims",
