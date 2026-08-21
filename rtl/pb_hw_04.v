@@ -68,7 +68,8 @@ module pb_hw04_single_port_conventional(
     localparam [2:0] IDLE=3'd0, R1=3'd1, R2=3'd2, R3=3'd3, CHECK=3'd4;
     (* ram_style = "block" *) reg [63:0] mem [0:1023];
     reg [2:0] state;
-    reg [63:0] p0,p1,p2,p3;
+    reg [63:0] mem_r;
+    reg [63:0] p0,p1,p2;
     reg [9:0] q0,q1,q2,q3;
     reg [7:0] q_derived_statement, q_expected_statement, q_expected_authority, q_epoch, q_context;
     reg [9:0] q_derived_identity;
@@ -79,9 +80,11 @@ module pb_hw04_single_port_conventional(
     reg outcome_seen_valid;
     reg [9:0] outcome_seen_identity;
 
+    wire mem_read_en = (state==IDLE && compose_start) || state==R1 || state==R2 || state==R3;
+    wire [9:0] mem_read_addr = state==IDLE ? addr0 : state==R1 ? q1 : state==R2 ? q2 : q3;
     wire [3:0] replay_hit = {seen_parent[q3],seen_parent[q2],seen_parent[q1],seen_parent[q0]};
     wire compose_good;
-    pb_hw04_check4 chk(.r0(p0),.r1(p1),.r2(p2),.r3(p3),
+    pb_hw04_check4 chk(.r0(p0),.r1(p1),.r2(p2),.r3(mem_r),
         .a0(q0),.a1(q1),.a2(q2),.a3(q3),.replay_hit(replay_hit),
         .expected_authority(q_expected_authority),.current_epoch(q_epoch),
         .current_context(q_context),.derived_statement(q_derived_statement),
@@ -100,6 +103,8 @@ module pb_hw04_single_port_conventional(
     always @(posedge clk) begin
         if (write_valid)
             mem[write_addr] <= write_record;
+        if (mem_read_en)
+            mem_r <= mem[mem_read_addr];
         if (reset) begin
             state<=IDLE; busy<=0; compose_valid<=0; compose_allowed<=0;
             terminal_valid<=0; terminal_success<=0; seen_parent<=0;
@@ -119,11 +124,11 @@ module pb_hw04_single_port_conventional(
                     q_derived_statement<=derived_statement; q_derived_identity<=derived_identity;
                     q_expected_statement<=expected_statement; q_expected_authority<=expected_authority;
                     q_epoch<=current_epoch; q_context<=current_context;
-                    p0<=mem[addr0]; busy<=1; state<=R1;
+                    busy<=1; state<=R1;
                 end
-                R1: begin p1<=mem[q1]; state<=R2; end
-                R2: begin p2<=mem[q2]; state<=R3; end
-                R3: begin p3<=mem[q3]; state<=CHECK; end
+                R1: begin p0<=mem_r; state<=R2; end
+                R2: begin p1<=mem_r; state<=R3; end
+                R3: begin p2<=mem_r; state<=CHECK; end
                 CHECK: begin
                     compose_valid<=1; compose_allowed<=compose_good; busy<=0; state<=IDLE; auth_valid<=0;
                     if (compose_good) begin
@@ -165,13 +170,14 @@ module pb_hw04_banked_conventional(
     output reg terminal_success
 );
     localparam [1:0] PROVEN_TRUE=2'b01;
-    localparam [1:0] IDLE=2'd0, READ=2'd1, CHECK=2'd2;
+    localparam [1:0] IDLE=2'd0, READ=2'd1;
     (* ram_style = "block" *) reg [63:0] bank0 [0:255];
     (* ram_style = "block" *) reg [63:0] bank1 [0:255];
     (* ram_style = "block" *) reg [63:0] bank2 [0:255];
     (* ram_style = "block" *) reg [63:0] bank3 [0:255];
+    reg [63:0] bank_r0,bank_r1,bank_r2,bank_r3;
     reg [1:0] state;
-    reg [3:0] pending;
+    reg [3:0] pending,return_mask;
     reg [63:0] p0,p1,p2,p3;
     reg [9:0] q0,q1,q2,q3;
     reg [7:0] q_derived_statement, q_expected_statement, q_expected_authority, q_epoch, q_context;
@@ -187,9 +193,27 @@ module pb_hw04_banked_conventional(
     wire serve3 = pending[3] && !(pending[0] && b0==b3) && !(pending[1] && b1==b3) && !(pending[2] && b2==b3);
     wire [3:0] serve_mask={serve3,serve2,serve1,serve0};
     wire [3:0] next_pending=pending & ~serve_mask;
+
+    wire issue_b0=(serve0&&b0==0)||(serve1&&b1==0)||(serve2&&b2==0)||(serve3&&b3==0);
+    wire issue_b1=(serve0&&b0==1)||(serve1&&b1==1)||(serve2&&b2==1)||(serve3&&b3==1);
+    wire issue_b2=(serve0&&b0==2)||(serve1&&b1==2)||(serve2&&b2==2)||(serve3&&b3==2);
+    wire issue_b3=(serve0&&b0==3)||(serve1&&b1==3)||(serve2&&b2==3)||(serve3&&b3==3);
+    wire [7:0] bank_addr0=(serve0&&b0==0)?q0[9:2]:(serve1&&b1==0)?q1[9:2]:(serve2&&b2==0)?q2[9:2]:q3[9:2];
+    wire [7:0] bank_addr1=(serve0&&b0==1)?q0[9:2]:(serve1&&b1==1)?q1[9:2]:(serve2&&b2==1)?q2[9:2]:q3[9:2];
+    wire [7:0] bank_addr2=(serve0&&b0==2)?q0[9:2]:(serve1&&b1==2)?q1[9:2]:(serve2&&b2==2)?q2[9:2]:q3[9:2];
+    wire [7:0] bank_addr3=(serve0&&b0==3)?q0[9:2]:(serve1&&b1==3)?q1[9:2]:(serve2&&b2==3)?q2[9:2]:q3[9:2];
+
+    wire [63:0] ret0=b0==0?bank_r0:b0==1?bank_r1:b0==2?bank_r2:bank_r3;
+    wire [63:0] ret1=b1==0?bank_r0:b1==1?bank_r1:b1==2?bank_r2:bank_r3;
+    wire [63:0] ret2=b2==0?bank_r0:b2==1?bank_r1:b2==2?bank_r2:bank_r3;
+    wire [63:0] ret3=b3==0?bank_r0:b3==1?bank_r1:b3==2?bank_r2:bank_r3;
+    wire [63:0] c0=return_mask[0]?ret0:p0;
+    wire [63:0] c1=return_mask[1]?ret1:p1;
+    wire [63:0] c2=return_mask[2]?ret2:p2;
+    wire [63:0] c3=return_mask[3]?ret3:p3;
     wire [3:0] replay_hit={seen_parent[q3],seen_parent[q2],seen_parent[q1],seen_parent[q0]};
     wire compose_good;
-    pb_hw04_check4 chk(.r0(p0),.r1(p1),.r2(p2),.r3(p3),.a0(q0),.a1(q1),.a2(q2),.a3(q3),
+    pb_hw04_check4 chk(.r0(c0),.r1(c1),.r2(c2),.r3(c3),.a0(q0),.a1(q1),.a2(q2),.a3(q3),
         .replay_hit(replay_hit),.expected_authority(q_expected_authority),.current_epoch(q_epoch),
         .current_context(q_context),.derived_statement(q_derived_statement),
         .expected_statement(q_expected_statement),.good(compose_good));
@@ -207,8 +231,14 @@ module pb_hw04_banked_conventional(
                 default: bank3[write_addr[9:2]]<=write_record;
             endcase
         end
+        if(state==READ) begin
+            if(issue_b0) bank_r0<=bank0[bank_addr0];
+            if(issue_b1) bank_r1<=bank1[bank_addr1];
+            if(issue_b2) bank_r2<=bank2[bank_addr2];
+            if(issue_b3) bank_r3<=bank3[bank_addr3];
+        end
         if (reset) begin
-            state<=IDLE; pending<=0; busy<=0; compose_valid<=0; compose_allowed<=0;
+            state<=IDLE; pending<=0; return_mask<=0; busy<=0; compose_valid<=0; compose_allowed<=0;
             terminal_valid<=0; terminal_success<=0; seen_parent<=0; auth_valid<=0;
             outcome_seen_valid<=0; auth_identity<=0; auth_statement<=0; outcome_seen_identity<=0;
         end else begin
@@ -220,32 +250,26 @@ module pb_hw04_banked_conventional(
             end
             case(state)
                 IDLE: if(compose_start) begin
-                    q0<=addr0; q1<=addr1; q2<=addr2; q3<=addr3; pending<=4'b1111;
+                    q0<=addr0; q1<=addr1; q2<=addr2; q3<=addr3; pending<=4'b1111; return_mask<=0;
                     q_derived_statement<=derived_statement; q_derived_identity<=derived_identity;
                     q_expected_statement<=expected_statement; q_expected_authority<=expected_authority;
                     q_epoch<=current_epoch; q_context<=current_context; busy<=1; state<=READ;
                 end
                 READ: begin
-                    if(serve0) case(b0)
-                        0:p0<=bank0[q0[9:2]];1:p0<=bank1[q0[9:2]];2:p0<=bank2[q0[9:2]];default:p0<=bank3[q0[9:2]];
-                    endcase
-                    if(serve1) case(b1)
-                        0:p1<=bank0[q1[9:2]];1:p1<=bank1[q1[9:2]];2:p1<=bank2[q1[9:2]];default:p1<=bank3[q1[9:2]];
-                    endcase
-                    if(serve2) case(b2)
-                        0:p2<=bank0[q2[9:2]];1:p2<=bank1[q2[9:2]];2:p2<=bank2[q2[9:2]];default:p2<=bank3[q2[9:2]];
-                    endcase
-                    if(serve3) case(b3)
-                        0:p3<=bank0[q3[9:2]];1:p3<=bank1[q3[9:2]];2:p3<=bank2[q3[9:2]];default:p3<=bank3[q3[9:2]];
-                    endcase
-                    pending<=next_pending;
-                    if(next_pending==0) state<=CHECK;
-                end
-                CHECK: begin
-                    compose_valid<=1; compose_allowed<=compose_good; busy<=0; state<=IDLE; auth_valid<=0;
-                    if(compose_good) begin
-                        seen_parent[q0]<=1; seen_parent[q1]<=1; seen_parent[q2]<=1; seen_parent[q3]<=1;
-                        auth_valid<=1; auth_identity<=q_derived_identity; auth_statement<=q_derived_statement;
+                    if(return_mask[0]) p0<=ret0;
+                    if(return_mask[1]) p1<=ret1;
+                    if(return_mask[2]) p2<=ret2;
+                    if(return_mask[3]) p3<=ret3;
+                    if(pending==0 && return_mask!=0) begin
+                        compose_valid<=1; compose_allowed<=compose_good; busy<=0; state<=IDLE;
+                        pending<=0; return_mask<=0; auth_valid<=0;
+                        if(compose_good) begin
+                            seen_parent[q0]<=1; seen_parent[q1]<=1; seen_parent[q2]<=1; seen_parent[q3]<=1;
+                            auth_valid<=1; auth_identity<=q_derived_identity; auth_statement<=q_derived_statement;
+                        end
+                    end else begin
+                        pending<=next_pending;
+                        return_mask<=serve_mask;
                     end
                 end
                 default: state<=IDLE;
@@ -330,18 +354,12 @@ module pb_hw04_cached_core(
             if(cache_valid[write_addr[3:0]] && cache_tag[write_addr[3:0]]==write_addr[9:4])
                 cache_valid[write_addr[3:0]]<=0;
         end
-
-        // Give every physical table replica an explicit synchronous read port.
-        // Keeping the BRAM output register separate from cache selection lets
-        // Yosys map each 1024x64 replica to block RAM instead of seeing an
-        // asynchronous/muxed read that cannot satisfy ram_style="block".
         if(compose_start) begin
             mem_r0<=mem0[addr0];
             mem_r1<=mem1[addr1];
             mem_r2<=mem2[addr2];
             mem_r3<=mem3[addr3];
         end
-
         if(invalidate_valid && cache_valid[invalidate_addr[3:0]] &&
            cache_tag[invalidate_addr[3:0]]==invalidate_addr[9:4])
             cache_valid[invalidate_addr[3:0]]<=0;
