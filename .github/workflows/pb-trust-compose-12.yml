@@ -1,0 +1,74 @@
+name: pb-trust-compose-12
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-12
+
+jobs:
+  whole-system-coherence:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: TC12 unit tests
+        run: python -m unittest tests.test_pb_trust_compose_12 -v
+
+      - name: Execute PB-TRUST-COMPOSE-12
+        run: |
+          python benchmarks/pb_trust_compose_12.py \
+            --rounds 11 \
+            --valid-iterations 10000 \
+            --json > /tmp/pb_trust_compose_12.json
+          python -m json.tool /tmp/pb_trust_compose_12.json
+
+      - name: Validate frozen TC12 oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          r=json.loads(Path('/tmp/pb_trust_compose_12.json').read_text())
+          assert r['benchmark_id']=='PB-TRUST-COMPOSE-12'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-TC12/v0.1 whole-system-coherence'
+          assert len(r['scenarios'])==6
+          assert r['channels']==['cpu','debug','dma']
+          assert r['primary_anti_strawman']=='whole_system_capability_machine'
+          assert r['no_single_winner_score'] is True
+          assert len({tuple(x) for x in r['runtime_orders']})==3
+
+          partial=r['safety']['cpu_only_tag_machine']
+          cap=r['safety']['whole_system_capability_machine']
+          proof=r['safety']['whole_system_proofbit_machine']
+
+          assert partial['unsafe_effects']==6
+          assert partial['blocked_attacks']==0
+          assert partial['oracle_accuracy']==0.0
+
+          for strong in (cap,proof):
+              assert strong['unsafe_effects']==0
+              assert strong['blocked_attacks']==6
+              assert strong['oracle_accuracy']==1.0
+
+          capmeta=r['logical_metadata']['whole_system_capability_machine']
+          pbmeta=r['logical_metadata']['whole_system_proofbit_machine']
+          assert capmeta['enforced_domains']==pbmeta['enforced_domains']
+          assert capmeta['global_replay_state'] is True
+          assert pbmeta['global_replay_state'] is True
+          assert capmeta['context_binding'] is True
+          assert pbmeta['context_binding'] is True
+          assert capmeta['object_version_binding'] is True
+          assert pbmeta['object_version_binding'] is True
+
+          for row in r['deeper_escape_probes'].values():
+              assert row['physical_tag_store_tamper_bypass'] is True
+              assert row['malicious_firmware_bypass'] is True
+              assert row['scored'] is False
+
+          assert 'model axiom' in r['coherence_axiom']
+          PY
