@@ -1,7 +1,6 @@
 `timescale 1ns/1ps
 module pb_hw04_tb;
     reg clk=0; always #5 clk=~clk;
-    integer cycle=0; always @(posedge clk) cycle=cycle+1;
     reg reset;
     reg write_valid; reg [9:0] write_addr; reg [63:0] write_record;
     reg invalidate_valid; reg [9:0] invalidate_addr;
@@ -67,17 +66,17 @@ module pb_hw04_tb;
     task automatic issue_compose;
         input [9:0] a0,a1,a2,a3; input [7:0] ds; input [9:0] did; input exp;
         output integer ls,lb,lc,lp;
-        integer start;
+        integer waited;
         begin
             addr0=a0;addr1=a1;addr2=a2;addr3=a3;derived_statement=ds;derived_identity=did;
-            compose_start=1; @(posedge clk); #1; compose_start=0; start=cycle;
+            compose_start=1; @(posedge clk); #1; compose_start=0; waited=0;
             ls=-1;lb=-1;lc=-1;lp=-1;
             while(ls<0 || lb<0 || lc<0 || lp<0) begin
-                @(posedge clk); #1;
-                if(cv_s && ls<0) begin ls=cycle-start; checks=checks+1; if(ca_s!==exp) failures=failures+1; end
-                if(cv_b && lb<0) begin lb=cycle-start; checks=checks+1; if(ca_b!==exp) failures=failures+1; end
-                if(cv_c && lc<0) begin lc=cycle-start; checks=checks+1; if(ca_c!==exp) failures=failures+1; end
-                if(cv_p && lp<0) begin lp=cycle-start; checks=checks+1; if(ca_p!==exp) failures=failures+1; end
+                @(posedge clk); #1; waited=waited+1;
+                if(cv_s && ls<0) begin ls=waited; checks=checks+1; if(ca_s!==exp) failures=failures+1; end
+                if(cv_b && lb<0) begin lb=waited; checks=checks+1; if(ca_b!==exp) failures=failures+1; end
+                if(cv_c && lc<0) begin lc=waited; checks=checks+1; if(ca_c!==exp) failures=failures+1; end
+                if(cv_p && lp<0) begin lp=waited; checks=checks+1; if(ca_p!==exp) failures=failures+1; end
             end
             if(lc!=lp) failures=failures+1;
         end
