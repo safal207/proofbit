@@ -35,6 +35,8 @@ jobs:
         run: python benchmarks/pb_ai_01.py --list-backends --json
       - name: PB-ARCH-01 reference smoke
         run: python benchmarks/pb_arch_01.py --decisions 10000 --contamination 0.10 --json
+      - name: PB-TRANSITION-01 reference smoke
+        run: python benchmarks/pb_transition_01.py --json
 
   cross-architecture-capu:
     name: PB-ARCH-01 ProofBit vs CaPU
@@ -73,4 +75,35 @@ jobs:
             --decisions 10000 \
             --contamination 0.10 \
             --capu-json /tmp/capu_pb_arch_01.json \
+            --json
+
+  cross-architecture-morphos:
+    name: PB-TRANSITION-01 MORPHOS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ProofBit
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned MORPHOS adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/COSMIC-ORGANICS
+          ref: 5ff088d647e315893a38a082ed27af07669177a1
+          path: external/COSMIC-ORGANICS
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Execute pinned MORPHOS PB-TRANSITION-01 adapter
+        run: |
+          (cd external/COSMIC-ORGANICS && python -m benchmarks.pb_transition_01) \
+            > /tmp/morphos_pb_transition_01.json
+          python -m json.tool /tmp/morphos_pb_transition_01.json
+
+      - name: Aggregate architecture transition scorecard
+        run: |
+          python benchmarks/pb_transition_01.py \
+            --morphos-json /tmp/morphos_pb_transition_01.json \
             --json
