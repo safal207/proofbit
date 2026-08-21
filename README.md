@@ -143,7 +143,7 @@ statement: client_approved(payment_42)
 status:    PROVEN_TRUE
 proof:     signed_message_8821
 source:    client_identity_key
- epoch:     18432
+epoch:     18432
 ```
 
 from:
@@ -164,29 +164,78 @@ The second value exists as information, but it does not receive the same authori
 5. **Derivations preserve provenance** — verified outputs must retain a machine-checkable path to the evidence that justified them.
 6. **Side effects require stronger grounding than internal computation** — privileged actions should be able to demand verified, fresh authority.
 
+## Benchmark program
+
+ProofBit is benchmarked on four separate axes:
+
+```text
+Utility
+Proof
+Cost
+Speed
+```
+
+The permanent control is a value-only `BaselineProcessor`. The external market reference set includes NVIDIA GB200 NVL72, Google TPU7x Ironwood, Cerebras WSE-3 / CS-3, AWS Trainium3, AMD Instinct MI450 Series, and OpenAI + Broadcom Jalapeno.
+
+Published hardware specifications are reference anchors only. A hardware system is not ranked against ProofBit until the same frozen workload has actually run on it.
+
+The north-star performance metric is:
+
+```text
+Trusted Useful Throughput
+  = proven useful actions / end-to-end second
+```
+
+Current benchmark families:
+
+```text
+PB-MEM-01      proof-aware memory
+PB-VERIFY-01   explicit proof verification
+PB-CACHE-01    proof-cache reuse and invalidation
+PB-GUARD-01    contaminated decision streams
+PB-AI-01       inference-like compute + proof-aware agent action boundary
+```
+
+`PB-AI-01` is now executable on the dependency-free CPU reference backend and exposes explicit `not-run` adapter targets for CUDA/NVIDIA, JAX/TPU, Cerebras, AWS Neuron/Trainium, AMD ROCm, and OpenAI Jalapeno until real target environments are available.
+
+See:
+
+```text
+docs/benchmark-methodology.md
+docs/benchmark-results-v0.2.md
+docs/market-benchmark-methodology.md
+docs/pb-ai-01.md
+```
+
 ## Repository structure
 
 ```text
-docs/spec-v0.1.md          Minimal semantic model
-docs/architecture-v0.1.md  Memory and processor architecture sketch
-docs/roadmap.md            Research and prototype plan
+proofbit/model.py                Reference value-only and proof-aware processors
+proofbit/cache.py                Context-bound Proof Cache
+proofbit/ai_workload.py          Portable PB-AI-01 workload contract
+benchmarks/compare.py            Baseline vs ProofProcessor microbenchmark
+benchmarks/contaminated.py       90/10 contaminated workload
+benchmarks/contamination_sweep.py Contamination-rate sweep
+benchmarks/cache_sweep.py        Proof Cache cost/reuse sweep
+benchmarks/pb_ai_01.py           Portable AI/agent benchmark runner
+benchmarks/hardware_reference.json Market accelerator registry
+benchmarks/market_matrix.py      Reference/executable market matrix
+docs/spec-v0.1.md                Minimal semantic model
+docs/architecture-v0.1.md        Memory and processor architecture sketch
+docs/roadmap.md                  Research and prototype plan
 ```
 
 ## Status
 
-**v0.1 research seed.** This repository defines an experimental model and architecture direction. It is not yet a hardware implementation, a formal proof system, or a claim that every underlying mechanism is novel. The goal is to make the idea precise enough to compare against prior work, simulate, falsify, and eventually prototype.
+**Executable research seed.** The repository now contains a semantic reference implementation, repeatable benchmarks, safety regression tests, Proof Cache experiments, a portable AI/agent workload, and a market benchmark frame. It is not yet a hardware implementation, a formal proof system, or a claim that every underlying mechanism is novel.
 
-## Near-term goal
-
-Build the smallest executable ProofBit machine that can demonstrate:
+The goal is to continuously move the ProofBit frontier toward:
 
 ```text
-observation
-  -> proof-aware memory
-  -> derivation
-  -> decision
-  -> guarded side effect
-  -> receipt
+Utility up
+Proof up
+Cost down
+Speed up
 ```
 
-without allowing `UNKNOWN`, stale authority, replayed evidence, or conflicting evidence to masquerade as verified state.
+while keeping external comparisons reproducible and apples-to-apples.
