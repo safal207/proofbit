@@ -14,7 +14,7 @@ PB-TRUST-COMPOSE-02 asks a narrower follow-up:
 PB-TC02/v0.1 real-ipc-trust-transport
 ```
 
-Default workload:
+Default workload per round:
 
 - 2,000 trials;
 - 12% contamination;
@@ -27,6 +27,8 @@ Default workload:
   - `REBIND_STATEMENT`;
   - `FALSE_SUCCESS`.
 
+Official scorecards use **five independent full pipeline rounds** and report median throughput and median elapsed time. Raw per-round throughput remains in the machine-readable median report so scheduler variance is visible rather than hidden.
+
 Oracle:
 
 - `VALID` -> dispatch yes, terminal success yes;
@@ -38,6 +40,8 @@ Oracle:
 The benchmark uses Python `multiprocessing.Pipe` and `send_bytes` / `recv_bytes`.
 
 For N boundaries, a request is decoded and re-encoded by N worker processes before final authorization/outcome evaluation. The final worker returns a fixed 2-byte `(dispatched, terminal_success)` result record to the parent. Worker startup happens before the timed region. Process scheduling, encode/decode, IPC system calls, and final validation are inside the measured wall-clock path.
+
+Each full round creates fresh worker processes and fresh trust/replay state. Rounds are therefore independent pipeline executions rather than repeated timing reads over a warmed stateful pipeline.
 
 This is real same-host process IPC, but it is **not** a network benchmark and not representative of a specific production RPC stack.
 
@@ -94,7 +98,7 @@ Always interpret results in this order:
 3. statement binding;
 4. request payload bytes;
 5. application payload bytes carried across real IPC edges;
-6. end-to-end throughput.
+6. median end-to-end throughput across independent rounds.
 
 No synthetic winner score is permitted.
 
@@ -106,8 +110,10 @@ Per implementation and boundary depth:
 - unsafe authorization dispatches;
 - false-success claims;
 - missed valid dispatches;
-- wall-clock elapsed ns;
-- trials/s;
+- raw trials/s for every round;
+- median elapsed ns;
+- median trials/s;
+- min/max trials/s as a simple variability view;
 - encoded request payload bytes;
 - mean request payload bytes;
 - request application-payload bytes across IPC edges;
@@ -125,14 +131,18 @@ The byte counters are intentionally named **IPC payload bytes**. They do not inc
 3. ProofBit does not get cryptographic verification credit; no cryptographic verifier runs.
 4. Worker process startup is excluded from the timed region for all systems.
 5. Process scheduling and encode/decode remain inside end-to-end timing.
-6. Unsupported physical interpretations are not inferred from Python IPC timing.
-7. Negative results must remain in the scorecard.
+6. Official throughput uses the median of five fresh full-pipeline rounds rather than a single run.
+7. Raw round values are preserved so a small apparent crossover cannot be promoted without repeatability.
+8. Unsupported physical interpretations are not inferred from Python IPC timing.
+9. Negative results must remain in the scorecard.
 
 ## What would falsify the transport advantage hypothesis?
 
 If compact conventional software remains equally correct and consistently faster or cheaper than ProofBit under the same wire encoding and real IPC boundaries, PB-TC02 does not support a ProofBit transport-performance advantage.
 
 If JSON is slower but compact software and ProofBit are similar, the result belongs primarily to encoding choice rather than proof-native semantics.
+
+A one-round ratio slightly above 1.0 is not sufficient evidence of a crossover. A crossover claim requires repeated measurements whose aggregate remains above the conventional compact control under the frozen protocol.
 
 ## Non-claims
 
