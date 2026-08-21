@@ -1,4 +1,4 @@
-# ProofBit Market Benchmark Methodology v0.1
+# ProofBit Market Benchmark Methodology v0.2
 
 ## Purpose
 
@@ -24,7 +24,7 @@ The initial reference set is deliberately broad:
 - Cerebras WSE-3 / CS-3
 - AWS Trainium3
 - AMD Instinct MI450 Series
-- OpenAI + Broadcom Jalapeño
+- OpenAI + Broadcom Jalapeno
 
 The machine-readable registry lives in `benchmarks/hardware_reference.json`.
 
@@ -48,7 +48,7 @@ energy / trusted useful action
 cost / trusted useful action
 ```
 
-The current Tier A contains only the software reference models. This is intentional.
+The current Tier A contains the ProofBit software reference models and the dependency-free CPU execution of PB-AI-01. External accelerator targets remain `NOT RUN` until the same frozen workload actually executes there.
 
 ### Tier B — published hardware reference
 
@@ -77,7 +77,7 @@ Tier B values MUST NOT be collapsed into an overall ranking because:
 
 ## ProofBit common workload suite
 
-The long-term cross-hardware suite should use frozen workload definitions.
+The long-term cross-hardware suite uses frozen workload definitions.
 
 ### PB-MEM-01 — proof-aware memory
 
@@ -105,25 +105,41 @@ false-positive block rate
 
 ### PB-AI-01 — proof-aware inference / agent workload
 
-Runs a model or agent loop where retrieved state carries proof metadata and selected external actions require proof-aware gating.
+PB-AI-01 v0.1 is now executable. Its frozen contract is documented in `docs/pb-ai-01.md` and implemented by `proofbit/ai_workload.py` plus `benchmarks/pb_ai_01.py`.
+
+Version 0.1 deliberately uses a deterministic inference-like fixed-point kernel rather than pretending to be an LLM quality benchmark. The same scores are passed through both a value-only execution boundary and a ProofBit execution boundary.
 
 Primary outputs:
 
 ```text
-tokens / second
-first-token latency
+inference elapsed time
 end-to-end task latency
-trusted actions / second
+useful actions / second
+trusted useful actions / second
 unsafe actions / million tool decisions
-proof overhead / token
-proof overhead / tool call
+proof coverage
+proof guard overhead
+end-to-end proof overhead
 ```
 
-This is the workload that can eventually compare ProofBit-enabled execution with GPU, TPU, Trainium, Cerebras, and custom inference accelerators in the market context that matters most.
+The first reproducible scorecard is `docs/benchmark-results-pb-ai-01-v0.1.md`.
+
+Reserved adapter IDs:
+
+```text
+nvidia-cuda
+google-tpu-jax
+cerebras
+aws-neuron
+amd-rocm
+openai-jalapeno
+```
+
+These remain `NOT RUN` until the adapter and target environment actually exist. No synthetic competitor score is substituted.
 
 ## Four-axis scorecard
 
-Every frozen run should report the four axes separately before any composite score.
+Every frozen run reports the four axes separately before any composite score.
 
 ### Utility
 
@@ -192,7 +208,33 @@ Net Proof Utility
   - Proof Latency Cost
 ```
 
-These values should remain decomposable. A single scalar score is secondary and must never hide the underlying measurements.
+These values remain decomposable. A single scalar score is secondary and must never hide the underlying measurements.
+
+## Executable PB-AI-01 baseline — August 2026
+
+GitHub Actions run `32465900273` executed PB-AI-01 v0.1 with 10,000 decisions and 10% contamination on the dependency-free CPU/Python reference backend.
+
+Observed CPython 3.12.14 results included:
+
+```text
+Value-only boundary:
+  9,000 safe actions
+  1,000 unsafe actions
+  100,000 unsafe / 1M decisions
+  452,392 end-to-end decisions/s
+
+ProofBit boundary:
+  9,000 safe and proven actions
+  0 unsafe actions
+  0 false-positive valid blocks
+  235,746 end-to-end decisions/s
+  212,171 trusted useful actions/s
+
+proof guard overhead: 9.76x
+end-to-end overhead:  1.92x
+```
+
+These are software reference numbers. Their purpose is to create the first common-workload coordinate, not to predict silicon performance.
 
 ## Current market context — August 2026
 
