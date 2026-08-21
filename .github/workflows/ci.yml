@@ -25,3 +25,5 @@ jobs:
         run: python benchmarks/contaminated.py --iterations 10000 --rounds 2 --json
       - name: Proof-cache benchmark smoke
         run: python benchmarks/cache_sweep.py --requests 10000 --rounds 2 --json
+      - name: Contamination sweep smoke
+        run: python benchmarks/contamination_sweep.py --iterations 20000 --rounds 1 --json
