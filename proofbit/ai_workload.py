@@ -59,6 +59,22 @@ class PurePythonBackend:
 
 BACKENDS = {
     "cpu-python": PurePythonBackend.info,
+    "capu-cmc": BackendInfo(
+        "capu-cmc",
+        "CaPU",
+        "Causal Processing Unit / CMC adapter",
+        "capu-causal-processing-unit",
+        "not-run-adapter-needed",
+        False,
+    ),
+    "cosmic-morphos": BackendInfo(
+        "cosmic-morphos",
+        "COSMIC ORGANICS",
+        "MORPHOS transition-compute adapter",
+        "cosmic-organics-morphos",
+        "not-run-adapter-needed",
+        False,
+    ),
     "nvidia-cuda": BackendInfo(
         "nvidia-cuda",
         "NVIDIA",
