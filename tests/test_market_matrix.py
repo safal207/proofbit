@@ -29,6 +29,15 @@ class MarketMatrixTests(unittest.TestCase):
         }
         self.assertTrue(expected.issubset(ids))
 
+    def test_reference_set_contains_internal_research_architectures(self) -> None:
+        ids = {system["id"] for system in self.registry["systems"]}
+        self.assertTrue(
+            {
+                "capu-causal-processing-unit",
+                "cosmic-organics-morphos",
+            }.issubset(ids)
+        )
+
     def test_only_common_workload_entries_are_executable_tier(self) -> None:
         for system in self.registry["systems"]:
             tier = market_matrix.classify(system)
@@ -70,6 +79,19 @@ class MarketMatrixTests(unittest.TestCase):
         for system_id, (adapter, status) in expected.items():
             self.assertEqual(by_id[system_id]["pb_ai_01_adapter"], adapter)
             self.assertEqual(by_id[system_id]["pb_ai_01_status"], status)
+
+    def test_research_architectures_have_explicit_pb_ai_01_targets(self) -> None:
+        by_id = {system["id"]: system for system in self.registry["systems"]}
+        expected = {
+            "capu-causal-processing-unit": "capu-cmc",
+            "cosmic-organics-morphos": "cosmic-morphos",
+        }
+        for system_id, adapter in expected.items():
+            self.assertEqual(by_id[system_id]["pb_ai_01_adapter"], adapter)
+            self.assertEqual(
+                by_id[system_id]["pb_ai_01_status"],
+                "not_run_adapter_needed",
+            )
 
 
 if __name__ == "__main__":
