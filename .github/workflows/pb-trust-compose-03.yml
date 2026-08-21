@@ -1,0 +1,87 @@
+name: pb-trust-compose-03
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-03
+
+jobs:
+  dynamic-trust-benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dynamic trust tests
+        run: python -m unittest tests.test_pb_trust_compose_03 -v
+
+      - name: Execute PB-TRUST-COMPOSE-03
+        run: |
+          python benchmarks/pb_trust_compose_03.py \
+            --trials 2000 \
+            --contamination 0.15 \
+            --boundaries 1,2,4,8 \
+            --rounds 5 \
+            --json > /tmp/pb_trust_compose_03.json
+          python -m json.tool /tmp/pb_trust_compose_03.json
+
+      - name: Validate frozen oracle and anti-strawman controls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_03.json').read_text())
+          assert report['benchmark_id'] == 'PB-TRUST-COMPOSE-03'
+          assert report['version'] == '0.1'
+          assert report['protocol'] == 'PB-TC03/v0.1 dynamic-trust-real-ipc'
+          assert report['rounds'] == 5
+          assert report['no_single_winner_score'] is True
+          for scale in report['scale']:
+              systems = scale['systems']
+              for name in ('software_eager', 'software_lazy', 'proofbit_lazy'):
+                  system = systems[name]
+                  assert system['oracle_accuracy'] == 1.0
+                  assert system['unsafe_authorization_dispatches'] == 0
+                  assert system['false_success_claims'] == 0
+                  assert system['missed_valid_dispatches'] == 0
+                  assert system['replay_duplicates_accepted'] == 0
+              assert systems['software_lazy']['total_request_ipc_payload_bytes'] == systems['proofbit_lazy']['total_request_ipc_payload_bytes']
+              assert systems['software_lazy']['control_ipc_payload_bytes'] == systems['proofbit_lazy']['control_ipc_payload_bytes']
+              assert systems['software_lazy']['control_messages'] == systems['proofbit_lazy']['control_messages']
+              if scale['boundaries'] > 1:
+                  assert systems['software_eager']['control_messages'] > systems['software_lazy']['control_messages']
+                  assert systems['software_eager']['validation_events']['epoch_checks'] > systems['software_lazy']['validation_events']['epoch_checks']
+          PY
+
+      - name: Focused depth-8 stability run
+        run: |
+          python benchmarks/pb_trust_compose_03.py \
+            --trials 2000 \
+            --contamination 0.15 \
+            --boundaries 8 \
+            --rounds 11 \
+            --json > /tmp/pb_trust_compose_03_depth8.json
+          python -m json.tool /tmp/pb_trust_compose_03_depth8.json
+
+      - name: Validate depth-8 stability oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_03_depth8.json').read_text())
+          assert report['rounds'] == 11
+          assert report['boundaries'] == [8]
+          systems = report['scale'][0]['systems']
+          for name in ('software_eager', 'software_lazy', 'proofbit_lazy'):
+              system = systems[name]
+              assert system['oracle_accuracy'] == 1.0
+              assert system['unsafe_authorization_dispatches'] == 0
+              assert system['false_success_claims'] == 0
+              assert system['missed_valid_dispatches'] == 0
+              assert system['replay_duplicates_accepted'] == 0
+          PY
