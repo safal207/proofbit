@@ -36,8 +36,8 @@ jobs:
       - name: PB-ARCH-01 reference smoke
         run: python benchmarks/pb_arch_01.py --decisions 10000 --contamination 0.10 --json
 
-  cross-architecture-capu:
-    name: PB-ARCH-01 ProofBit vs CaPU
+  research-architecture-scorecard:
+    name: CPU vs ProofBit vs CaPU vs MORPHOS
     runs-on: ubuntu-latest
     steps:
       - name: Checkout ProofBit
@@ -49,6 +49,13 @@ jobs:
           repository: safal207/CaPU
           ref: 8d0fb9d85415a53863ead80c4604c981b517fb5a
           path: external/CaPU
+
+      - name: Checkout pinned MORPHOS adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/COSMIC-ORGANICS
+          ref: 5ff088d647e315893a38a082ed27af07669177a1
+          path: external/COSMIC-ORGANICS
 
       - name: Install Python
         uses: actions/setup-python@v5
@@ -67,10 +74,17 @@ jobs:
             > /tmp/capu_pb_arch_01.json
           python -m json.tool /tmp/capu_pb_arch_01.json
 
-      - name: Aggregate ProofBit vs CaPU
+      - name: Execute pinned MORPHOS PB-TRANSITION-01 adapter
+        working-directory: external/COSMIC-ORGANICS
         run: |
-          python benchmarks/pb_arch_01.py \
+          python -m benchmarks.pb_transition_01 > /tmp/morphos_pb_transition_01.json
+          python -m json.tool /tmp/morphos_pb_transition_01.json
+
+      - name: Build four-architecture research scorecard
+        run: |
+          python benchmarks/research_architecture_scorecard.py \
+            --capu-json /tmp/capu_pb_arch_01.json \
+            --morphos-json /tmp/morphos_pb_transition_01.json \
             --decisions 10000 \
             --contamination 0.10 \
-            --capu-json /tmp/capu_pb_arch_01.json \
             --json
