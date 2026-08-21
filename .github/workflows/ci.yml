@@ -35,3 +35,42 @@ jobs:
         run: python benchmarks/pb_ai_01.py --list-backends --json
       - name: PB-ARCH-01 reference smoke
         run: python benchmarks/pb_arch_01.py --decisions 10000 --contamination 0.10 --json
+
+  cross-architecture-capu:
+    name: PB-ARCH-01 ProofBit vs CaPU
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ProofBit
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned CaPU adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/CaPU
+          ref: 8d0fb9d85415a53863ead80c4604c981b517fb5a
+          path: external/CaPU
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Execute pinned CaPU PB-ARCH-01 adapter
+        run: |
+          cargo run --quiet \
+            --manifest-path external/CaPU/rust/cmc-core/Cargo.toml \
+            --bin pb_arch_01 --locked -- \
+            --decisions 10000 --contamination 0.10 \
+            > /tmp/capu_pb_arch_01.json
+          python -m json.tool /tmp/capu_pb_arch_01.json
+
+      - name: Aggregate ProofBit vs CaPU
+        run: |
+          python benchmarks/pb_arch_01.py \
+            --decisions 10000 \
+            --contamination 0.10 \
+            --capu-json /tmp/capu_pb_arch_01.json \
+            --json
