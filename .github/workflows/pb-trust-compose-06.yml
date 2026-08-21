@@ -1,0 +1,80 @@
+name: pb-trust-compose-06
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-06
+
+jobs:
+  policy-evolution-benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: TC06 policy evolution tests
+        run: python -m unittest tests.test_pb_trust_compose_06 -v
+
+      - name: Execute PB-TRUST-COMPOSE-06
+        run: |
+          python benchmarks/pb_trust_compose_06.py \
+            --requests-per-version 10000 \
+            --components 8 \
+            --rounds 11 \
+            --json > /tmp/pb_trust_compose_06.json
+          python -m json.tool /tmp/pb_trust_compose_06.json
+
+      - name: Validate frozen oracle and anti-strawman controls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_06.json').read_text())
+          assert report['benchmark_id'] == 'PB-TRUST-COMPOSE-06'
+          assert report['version'] == '0.1'
+          assert report['protocol'] == 'PB-TC06/v0.1 policy-evolution-divergence'
+          assert report['components'] == 8
+          assert report['rounds'] == 11
+          assert report['policy_descriptor_bytes'] == 16
+          assert report['propagation_token_bytes'] == 32
+          assert report['no_single_winner_score'] is True
+          assert report['primary_anti_strawman'] == 'software_shared_registry'
+          assert len({tuple(order) for order in report['measurement_orders']}) == 3
+
+          runtime = report['runtime']
+          for name in ('software_shared_registry', 'software_independent_copies', 'proofbit_contract'):
+              result = runtime[name]
+              assert result['oracle_accuracy'] == 1.0, name
+              assert result['unsafe_accepts'] == 0, name
+              assert result['false_terminal_success'] == 0, name
+              assert result['missed_valid'] == 0, name
+
+          work = report['evolution_work']
+          shared = work['software_shared_registry']
+          independent = work['software_independent_copies']
+          proof = work['proofbit_contract']
+
+          # Shared conventional software is intentionally given the same update
+          # topology and representation as the ProofBit control.
+          assert shared['policy_copy_updates'] == proof['policy_copy_updates'] == 4
+          assert shared['regression_suite_invocations'] == proof['regression_suite_invocations'] == 4
+          assert shared['active_policy_descriptor_bytes'] == proof['active_policy_descriptor_bytes'] == 16
+          assert shared['propagated_receipt_bytes'] == proof['propagated_receipt_bytes'] == 32
+
+          # Independent copies remain correct but pay replicated update/regression work.
+          assert independent['policy_copy_updates'] == 32
+          assert independent['safe_activation_steps'] == 32
+          assert independent['regression_suite_invocations'] == 32
+          assert independent['regression_suite_failures'] == 0
+          assert independent['semantic_drift_after_safe_activation'] == 0
+
+          stress = independent['early_activation_stress']
+          assert stress['phases'] == 28
+          assert stress['valid_probes'] == 2800
+          assert stress['valid_blocks'] == 2800
+          assert stress['unsafe_accepts'] == 0
+          PY
