@@ -119,6 +119,26 @@ def prepare_resource(base: Path, system: str, label: str, protected_uid: int, pr
     return directory, resource
 
 
+def make_broker_bundle(root: Path, base: Path) -> Path:
+    """Copy executable broker code to a world-readable temp tree.
+
+    GitHub's checkout parents are not traversable by the protected `nobody`
+    UID. Code visibility is not resource authority, so keep the source bundle
+    readable while the protected resource stays behind a separate 0700/0600
+    UID boundary.
+    """
+    bundle = base / "broker-code"
+    bundle.mkdir(mode=0o755)
+    shutil.copy2(root / "benchmarks" / "tc10_privileged_broker.py", bundle / "tc10_privileged_broker.py")
+    shutil.copytree(root / "proofbit", bundle / "proofbit")
+    for path in [bundle, *bundle.rglob("*")]:
+        if path.is_dir():
+            os.chmod(path, 0o755)
+        else:
+            os.chmod(path, 0o644)
+    return bundle
+
+
 def hostile_script(root: Path) -> str:
     return str(root / "benchmarks" / "tc10_hostile_writer.py")
 
@@ -222,8 +242,8 @@ def send(proc: subprocess.Popen, message: dict) -> dict:
     return json.loads(line)
 
 
-def start_broker(system: str, root: Path, resource: Path) -> subprocess.Popen:
-    script = str(root / "benchmarks" / "tc10_privileged_broker.py")
+def start_broker(system: str, bundle: Path, resource: Path) -> subprocess.Popen:
+    script = str(bundle / "tc10_privileged_broker.py")
     base = [sys.executable, script, "--mode", system, "--resource", str(resource)]
     if system in STRONG_SYSTEMS:
         cmd = [
@@ -233,7 +253,7 @@ def start_broker(system: str, root: Path, resource: Path) -> subprocess.Popen:
             "nobody",
             "--",
             "env",
-            f"PYTHONPATH={root}",
+            f"PYTHONPATH={bundle}",
             *base,
         ]
     else:
@@ -245,7 +265,7 @@ def start_broker(system: str, root: Path, resource: Path) -> subprocess.Popen:
         stderr=subprocess.PIPE,
         text=True,
         bufsize=1,
-        cwd=root,
+        cwd=bundle,
     )
 
 
@@ -262,9 +282,9 @@ def stop_broker(proc: subprocess.Popen) -> None:
             stream.close()
 
 
-def valid_path(system: str, root: Path, base: Path, count: int, protected_uid: int, protected_gid: int) -> dict:
+def valid_path(system: str, bundle: Path, base: Path, count: int, protected_uid: int, protected_gid: int) -> dict:
     _, resource = prepare_resource(base, system, "valid", protected_uid, protected_gid)
-    proc = start_broker(system, root, resource)
+    proc = start_broker(system, bundle, resource)
     try:
         start = time.perf_counter_ns()
         accepted = 0
@@ -299,7 +319,7 @@ def valid_path(system: str, root: Path, base: Path, count: int, protected_uid: i
     }
 
 
-def run_once(system: str, root: Path, round_base: Path, valid_count: int, protected_uid: int, protected_gid: int) -> dict:
+def run_once(system: str, root: Path, bundle: Path, round_base: Path, valid_count: int, protected_uid: int, protected_gid: int) -> dict:
     system_base = round_base / system
     system_base.mkdir(mode=0o755)
     attack_rows = []
@@ -307,7 +327,7 @@ def run_once(system: str, root: Path, round_base: Path, valid_count: int, protec
         succeeded = attack(system, name, root, system_base, protected_uid, protected_gid)
         attack_rows.append({"name": name, "hostile_write_succeeded": succeeded})
     compromise = same_privilege_compromise(system, system_base, protected_uid, protected_gid)
-    perf = valid_path(system, root, system_base, valid_count, protected_uid, protected_gid)
+    perf = valid_path(system, bundle, system_base, valid_count, protected_uid, protected_gid)
     unsafe = sum(int(x["hostile_write_succeeded"]) for x in attack_rows)
     return {
         "attacks": attack_rows,
@@ -354,6 +374,7 @@ def run(rounds: int, valid_count: int) -> dict:
     orders: list[list[str]] = []
     base = Path(tempfile.mkdtemp(prefix="proofbit-tc10-"))
     os.chmod(base, 0o755)
+    bundle = make_broker_bundle(root, base)
     try:
         for round_index in range(rounds):
             order = permutations[round_index % len(permutations)]
@@ -365,6 +386,7 @@ def run(rounds: int, valid_count: int) -> dict:
                     run_once(
                         system,
                         root,
+                        bundle,
                         round_base,
                         valid_count,
                         protected_uid,
@@ -420,6 +442,7 @@ def run(rounds: int, valid_count: int) -> dict:
         "same_privilege_probe_scored": False,
         "same_privilege_boundary": "If hostile code obtains the protected resource owner's UID or root, both software_os_reference_monitor and software ProofBit can be bypassed by direct resource writes. This is measured as an explicit unscored compromise probe.",
         "stale_fd_rule": "chmod/path permission changes do not revoke an already-open writable file descriptor; avoiding handle leakage is part of the protected-resource topology.",
+        "code_visibility_rule": "Broker code is copied to a world-readable temporary bundle so the protected UID can execute it; code readability is deliberately separated from protected-resource write authority.",
         "no_single_winner_score": True,
         "claim_boundary": "Real POSIX UID/DAC separation, real subprocesses, real file writes, and a same-privilege compromise probe on one ephemeral Linux runner. The hosted runner orchestrator itself has passwordless sudo, but the scored hostile subprocess is intentionally unprivileged and never invokes sudo. No kernel exploit, namespace/container isolation, Linux capability(7) proof, cryptography, hardware, energy, novelty, patentability, or universal-superiority claim.",
     }
