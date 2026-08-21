@@ -1,0 +1,55 @@
+name: pb-trust-compose-01
+
+on:
+  pull_request:
+    paths:
+      - "proofbit/**"
+      - "benchmarks/pb_trust_compose_01.py"
+      - "tests/test_statement_binding.py"
+      - "tests/test_pb_trust_compose_01.py"
+      - "docs/pb-trust-compose-01-methodology.md"
+      - ".github/workflows/pb-trust-compose-01.yml"
+
+jobs:
+  compose-benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Statement-binding and compose tests
+        run: |
+          python -m unittest tests.test_statement_binding -v
+          python -m unittest tests.test_pb_trust_compose_01 -v
+
+      - name: Execute PB-TRUST-COMPOSE-01
+        run: |
+          python benchmarks/pb_trust_compose_01.py \
+            --trials 10000 \
+            --contamination 0.12 \
+            --boundaries 1,2,4,8,16,32 \
+            --json > /tmp/pb_trust_compose_01.json
+          python -m json.tool /tmp/pb_trust_compose_01.json
+
+      - name: Validate frozen oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_01.json').read_text())
+          assert report['benchmark_id'] == 'PB-TRUST-COMPOSE-01'
+          assert report['version'] == '0.1'
+          assert report['fault_counts']['VALID'] == 8800
+          for kind in report['fault_kinds']:
+              assert report['fault_counts'][kind] == 200
+          for scale in report['scale']:
+              for name in ('software_shared', 'software_serialized', 'proofbit'):
+                  system = scale['systems'][name]
+                  assert system['oracle_accuracy'] == 1.0
+                  assert system['unsafe_authorization_dispatches'] == 0
+                  assert system['false_success_claims'] == 0
+                  assert system['missed_valid_dispatches'] == 0
+          PY
