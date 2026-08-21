@@ -1,0 +1,66 @@
+name: pb-trust-compose-09
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-09
+
+jobs:
+  enforcement-bypass-tcb:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: TC09 unit and executable tests
+        run: python -m unittest tests.test_pb_trust_compose_09 -v
+
+      - name: Execute PB-TRUST-COMPOSE-09
+        run: |
+          python benchmarks/pb_trust_compose_09.py \
+            --rounds 11 \
+            --valid-requests 500 \
+            --json > /tmp/pb_trust_compose_09.json
+          python -m json.tool /tmp/pb_trust_compose_09.json
+
+      - name: Validate frozen enforcement oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/pb_trust_compose_09.json').read_text())
+          assert r['benchmark_id']=='PB-TRUST-COMPOSE-09'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-TC09/v0.1 enforcement-bypass-tcb'
+          assert r['rounds']==11
+          assert r['primary_anti_strawman']=='software_reference_monitor'
+          assert r['no_single_winner_score'] is True
+          assert len(r['attack_cases'])==8
+          assert len({tuple(x) for x in r['measurement_orders']})==3
+          assert 'NOT_MODELED' in r['host_escape_status']
+
+          app=r['attack_results']['application_validator']
+          monitor=r['attack_results']['software_reference_monitor']
+          proof=r['attack_results']['proofbit_execution_boundary']
+
+          assert app['unsafe_side_effects'] > 0
+          assert app['false_successes'] > 0
+          assert app['bypass_failures'] > 0
+          assert app['oracle_accuracy'] < 1.0
+
+          for strong in (monitor,proof):
+              assert strong['oracle_accuracy']==1.0
+              assert strong['unsafe_side_effects']==0
+              assert strong['false_successes']==0
+              assert strong['bypass_failures']==0
+
+          t=r['tcb_surface']
+          assert t['application_validator']['mandatory_effect_boundary_checks']==0
+          assert t['software_reference_monitor']['mandatory_effect_boundary_checks']==1
+          assert t['proofbit_execution_boundary']['mandatory_effect_boundary_checks']==1
+          assert t['software_reference_monitor']['outcome_authority']=='worker_receipt'
+          assert t['proofbit_execution_boundary']['outcome_authority']=='worker_receipt'
+          PY
