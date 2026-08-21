@@ -1,5 +1,5 @@
 {
-  "schema_version": "0.2",
+  "schema_version": "0.3",
   "captured_at": "2026-08-21",
   "rule": "Published hardware specifications are reference data only. Overall ranking requires the same executable workload, precision, scale, and measurement boundary.",
   "systems": [
@@ -26,6 +26,38 @@
       "pb_ai_01_status": "executed_cpu_reference",
       "proof_native": true,
       "notes": "Proof-aware semantic reference model; not silicon."
+    },
+    {
+      "id": "capu-causal-processing-unit",
+      "vendor": "CaPU",
+      "product": "Causal Processing Unit / Causal Memory Controller",
+      "class": "causal_processing_research_architecture",
+      "scale": "software_processor_model",
+      "status": "executable_research_reference",
+      "common_workload_ready": false,
+      "pb_ai_01_adapter": "capu-cmc",
+      "pb_ai_01_status": "not_run_adapter_needed",
+      "proof_native": null,
+      "comparison_role": "permission-first and transition-legitimacy architecture",
+      "pipeline": "Gate -> Incubate -> Commit -> Execute -> Effect",
+      "source": "https://github.com/safal207/CaPU",
+      "notes": "CaPU has a processor model, semantic ISA and microarchitecture documents, but it is not treated as a silicon CPU until hardware implementation and common-workload measurements exist."
+    },
+    {
+      "id": "cosmic-organics-morphos",
+      "vendor": "COSMIC ORGANICS",
+      "product": "MORPHOS",
+      "class": "morphogenetic_transition_computing_research",
+      "scale": "software_lattice_simulator",
+      "status": "executable_research_reference",
+      "common_workload_ready": false,
+      "pb_ai_01_adapter": "cosmic-morphos",
+      "pb_ai_01_status": "not_run_adapter_needed",
+      "proof_native": null,
+      "comparison_role": "state-transition and physical-like computation architecture",
+      "core_model": "state + interaction + constraint + energy + time -> transition -> function",
+      "source": "https://github.com/safal207/COSMIC-ORGANICS",
+      "notes": "MORPHOS is an alternative computing model where controlled state transition is computation. It belongs in the research-architecture set, not in direct silicon ranking until a frozen common workload adapter exists."
     },
     {
       "id": "nvidia-gb200-nvl72",
