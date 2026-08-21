@@ -1,0 +1,22 @@
+name: pb-hw-04-diagnostic
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-hw-04
+
+jobs:
+  verdict-diagnostic:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Icarus
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y iverilog
+      - name: Print exact HW-04 verdict mismatches
+        run: python benchmarks/pb_hw_04_diag.py
