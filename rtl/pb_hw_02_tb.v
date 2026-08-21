@@ -6,14 +6,12 @@ module pb_hw02_tb;
 
     reg reset;
 
-    // Minimal-capability inputs.
     reg min_valid, min_tag;
     reg [7:0] min_action, min_authority, min_epoch;
     reg [15:0] min_nonce;
     reg [7:0] min_expected_action, min_expected_authority, min_current_epoch;
     wire min_dispatch_valid, min_dispatch_allowed;
 
-    // Shared rich inputs; conventional and ProofBit see byte-for-byte identical vectors.
     reg rich_valid, rich_kind, rich_tag;
     reg [1:0] rich_state;
     reg [7:0] rich_statement, rich_authority, rich_epoch;
@@ -124,14 +122,14 @@ module pb_hw02_tb;
         input [7:0] epoch;
         input [15:0] identity;
         input [7:0] provenance;
-        input [7:0] context;
+        input [7:0] ctx;
         input expected_allow;
         input score_case;
         begin
             @(negedge clk);
             rich_valid = 1'b1; rich_kind = kind; rich_tag = tag; rich_state = state;
             rich_statement = statement; rich_authority = authority; rich_epoch = epoch;
-            rich_identity = identity; rich_provenance = provenance; rich_context = context;
+            rich_identity = identity; rich_provenance = provenance; rich_context = ctx;
             rich_expected_statement = 8'hA1; rich_expected_authority = 8'h07;
             rich_current_epoch = 8'h03; rich_current_context = 8'h22;
             @(negedge clk); rich_valid = 1'b0;
@@ -164,18 +162,14 @@ module pb_hw02_tb;
 
         reset_fixture();
 
-        // Minimal capability: all promised semantics must pass their own oracle.
-        min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0101, 1); // valid
-        min_case(0, 8'hA1, 8'h07, 8'h03, 16'h0102, 0); // tag
-        min_case(1, 8'hB2, 8'h07, 8'h03, 16'h0103, 0); // action binding
-        min_case(1, 8'hA1, 8'h08, 8'h03, 16'h0104, 0); // authority
-        min_case(1, 8'hA1, 8'h07, 8'h02, 16'h0105, 0); // freshness
-        min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0106, 1); // consume once setup
-        min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0106, 0); // replay
+        min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0101, 1);
+        min_case(0, 8'hA1, 8'h07, 8'h03, 16'h0102, 0);
+        min_case(1, 8'hB2, 8'h07, 8'h03, 16'h0103, 0);
+        min_case(1, 8'hA1, 8'h08, 8'h03, 16'h0104, 0);
+        min_case(1, 8'hA1, 8'h07, 8'h02, 16'h0105, 0);
+        min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0106, 1);
+        min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0106, 0);
 
-        // Four rich semantics are deliberately absent from minimal capability.
-        // A valid minimal token still dispatches, so these are coverage gaps, not
-        // failures against promises the minimal design never made.
         min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0110, 1); min_semantic_gap_accepts = min_semantic_gap_accepts + 1;
         min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0111, 1); min_semantic_gap_accepts = min_semantic_gap_accepts + 1;
         min_case(1, 8'hA1, 8'h07, 8'h03, 16'h0112, 1); min_semantic_gap_accepts = min_semantic_gap_accepts + 1;
@@ -183,8 +177,7 @@ module pb_hw02_tb;
 
         reset_fixture();
 
-        // Full-evidence authorization oracle.
-        rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0201,8'h11,8'h22,1,1); // valid
+        rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0201,8'h11,8'h22,1,1);
         rich_case(0,1,UNKNOWN,     8'hA1,8'h07,8'h03,16'h0202,8'h11,8'h22,0,1);
         rich_case(0,1,CONFLICT,    8'hA1,8'h07,8'h03,16'h0203,8'h11,8'h22,0,1);
         rich_case(0,1,PROVEN_FALSE,8'hA1,8'h07,8'h03,16'h0204,8'h11,8'h22,0,1);
@@ -194,21 +187,17 @@ module pb_hw02_tb;
         rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0208,8'h00,8'h22,0,1);
         rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0209,8'h11,8'h23,0,1);
         rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0210,8'h11,8'h22,1,0);
-        rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0210,8'h11,8'h22,0,1); // replay
+        rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0210,8'h11,8'h22,0,1);
 
-        // Outcome without authorization cannot manufacture terminal success.
         rich_case(1,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0301,8'h11,8'h22,0,1);
 
-        // Valid authorization followed by separate outcome evidence.
         rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0302,8'h11,8'h22,1,0);
         rich_case(1,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0302,8'h11,8'h22,1,1);
-        rich_case(1,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0302,8'h11,8'h22,0,1); // duplicate outcome
+        rich_case(1,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0302,8'h11,8'h22,0,1);
 
-        // False outcome evidence is never promoted to terminal success.
         rich_case(0,1,PROVEN_TRUE, 8'hA1,8'h07,8'h03,16'h0303,8'h11,8'h22,1,0);
         rich_case(1,1,PROVEN_FALSE,8'hA1,8'h07,8'h03,16'h0303,8'h11,8'h22,0,1);
 
-        // Back-to-back minimal authorization stream: one input per cycle.
         reset_fixture();
         min_stream_mode = 1;
         for (k = 0; k < 32; k = k + 1) begin
@@ -220,8 +209,6 @@ module pb_hw02_tb;
         repeat (3) @(posedge clk);
         #1; min_stream_mode = 0;
 
-        // Back-to-back rich stream: AUTH then OUTCOME for each identity.
-        // 32 input transactions establish 16 trusted terminal outcomes.
         reset_fixture();
         stream_mode = 1;
         for (k = 0; k < 16; k = k + 1) begin
