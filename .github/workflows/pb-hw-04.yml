@@ -24,7 +24,11 @@ jobs:
         run: python -m unittest tests.test_pb_hw_04 -v
       - name: Simulate and synthesize PB-HW-04
         run: |
-          python benchmarks/pb_hw_04.py --json > /tmp/pb_hw_04.json
+          if ! python benchmarks/pb_hw_04.py --json > /tmp/pb_hw_04.json 2> /tmp/pb_hw_04.err; then
+            echo "=== PB-HW-04 synthesis failure tail ==="
+            tail -n 120 /tmp/pb_hw_04.err
+            exit 1
+          fi
           python -m json.tool /tmp/pb_hw_04.json
       - name: Validate frozen PB-HW-04 oracle
         run: |
