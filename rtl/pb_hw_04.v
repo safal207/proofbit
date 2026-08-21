@@ -290,11 +290,13 @@ module pb_hw04_cached_core(
     (* ram_style = "block" *) reg [63:0] mem2 [0:1023];
     (* ram_style = "block" *) reg [63:0] mem3 [0:1023];
 
+    reg [63:0] mem_r0,mem_r1,mem_r2,mem_r3;
     reg [15:0] cache_valid;
     reg [5:0] cache_tag [0:15];
     reg [63:0] cache_data [0:15];
 
     reg [1:0] state;
+    reg [3:0] q_hit;
     reg [63:0] p0,p1,p2,p3;
     reg [9:0] q0,q1,q2,q3;
     reg [7:0] q_derived_statement,q_expected_statement,q_expected_authority,q_epoch,q_context;
@@ -328,12 +330,24 @@ module pb_hw04_cached_core(
             if(cache_valid[write_addr[3:0]] && cache_tag[write_addr[3:0]]==write_addr[9:4])
                 cache_valid[write_addr[3:0]]<=0;
         end
+
+        // Give every physical table replica an explicit synchronous read port.
+        // Keeping the BRAM output register separate from cache selection lets
+        // Yosys map each 1024x64 replica to block RAM instead of seeing an
+        // asynchronous/muxed read that cannot satisfy ram_style="block".
+        if(compose_start) begin
+            mem_r0<=mem0[addr0];
+            mem_r1<=mem1[addr1];
+            mem_r2<=mem2[addr2];
+            mem_r3<=mem3[addr3];
+        end
+
         if(invalidate_valid && cache_valid[invalidate_addr[3:0]] &&
            cache_tag[invalidate_addr[3:0]]==invalidate_addr[9:4])
             cache_valid[invalidate_addr[3:0]]<=0;
 
         if(reset) begin
-            state<=IDLE; busy<=0; compose_valid<=0; compose_allowed<=0;
+            state<=IDLE; q_hit<=0; busy<=0; compose_valid<=0; compose_allowed<=0;
             terminal_valid<=0; terminal_success<=0; cache_valid<=0; seen_parent<=0;
             auth_valid<=0; outcome_seen_valid<=0; auth_identity<=0; auth_statement<=0; outcome_seen_identity<=0;
         end else begin
@@ -346,20 +360,23 @@ module pb_hw04_cached_core(
             case(state)
                 IDLE: if(compose_start) begin
                     q0<=addr0; q1<=addr1; q2<=addr2; q3<=addr3;
+                    q_hit<={h3,h2,h1,h0};
                     q_derived_statement<=derived_statement; q_derived_identity<=derived_identity;
                     q_expected_statement<=expected_statement; q_expected_authority<=expected_authority;
                     q_epoch<=current_epoch; q_context<=current_context; busy<=1;
-                    p0 <= h0 ? cache_data[i0] : mem0[addr0];
-                    p1 <= h1 ? cache_data[i1] : mem1[addr1];
-                    p2 <= h2 ? cache_data[i2] : mem2[addr2];
-                    p3 <= h3 ? cache_data[i3] : mem3[addr3];
-                    if(!h0) begin cache_data[i0]<=mem0[addr0]; cache_tag[i0]<=addr0[9:4]; cache_valid[i0]<=1; end
-                    if(!h1) begin cache_data[i1]<=mem1[addr1]; cache_tag[i1]<=addr1[9:4]; cache_valid[i1]<=1; end
-                    if(!h2) begin cache_data[i2]<=mem2[addr2]; cache_tag[i2]<=addr2[9:4]; cache_valid[i2]<=1; end
-                    if(!h3) begin cache_data[i3]<=mem3[addr3]; cache_tag[i3]<=addr3[9:4]; cache_valid[i3]<=1; end
+                    if(h0) p0<=cache_data[i0];
+                    if(h1) p1<=cache_data[i1];
+                    if(h2) p2<=cache_data[i2];
+                    if(h3) p3<=cache_data[i3];
                     state <= all_hit ? CHECK : MISS_WAIT;
                 end
-                MISS_WAIT: state<=CHECK;
+                MISS_WAIT: begin
+                    if(!q_hit[0]) begin p0<=mem_r0; cache_data[q0[3:0]]<=mem_r0; cache_tag[q0[3:0]]<=q0[9:4]; cache_valid[q0[3:0]]<=1; end
+                    if(!q_hit[1]) begin p1<=mem_r1; cache_data[q1[3:0]]<=mem_r1; cache_tag[q1[3:0]]<=q1[9:4]; cache_valid[q1[3:0]]<=1; end
+                    if(!q_hit[2]) begin p2<=mem_r2; cache_data[q2[3:0]]<=mem_r2; cache_tag[q2[3:0]]<=q2[9:4]; cache_valid[q2[3:0]]<=1; end
+                    if(!q_hit[3]) begin p3<=mem_r3; cache_data[q3[3:0]]<=mem_r3; cache_tag[q3[3:0]]<=q3[9:4]; cache_valid[q3[3:0]]<=1; end
+                    state<=CHECK;
+                end
                 CHECK: begin
                     compose_valid<=1; compose_allowed<=compose_good; busy<=0; state<=IDLE; auth_valid<=0;
                     if(compose_good) begin
