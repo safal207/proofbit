@@ -79,7 +79,7 @@ The workflow reran only depth 8 for **11 independent full rounds**.
 | --- | ---: | ---: | ---: |
 | software_eager | 2,021.1 | 1,896.9 | 2,075.7 |
 | software_lazy | **2,055.8** | 2,007.5 | 2,130.1 |
-| proofbit_lazy | 2,010.2 | 1,889.0 | 2,038.3 |
+| proofbit_lazy | 2,010.2 | 1,989.0 | 2,038.3 |
 
 Stable median ratios:
 
