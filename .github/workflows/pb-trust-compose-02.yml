@@ -1,0 +1,68 @@
+name: pb-trust-compose-02
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-02
+
+jobs:
+  real-ipc-benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Transport benchmark tests
+        run: python -m unittest tests.test_pb_trust_compose_02 -v
+
+      - name: Execute five PB-TRUST-COMPOSE-02 rounds
+        run: |
+          for round in 1 2 3 4 5; do
+            python benchmarks/pb_trust_compose_02.py \
+              --trials 2000 \
+              --contamination 0.12 \
+              --boundaries 1,2,4,8 \
+              --json > "/tmp/pb_trust_compose_02_round_${round}.json"
+          done
+
+      - name: Build median scorecard
+        run: |
+          python benchmarks/pb_trust_compose_02_median.py \
+            /tmp/pb_trust_compose_02_round_1.json \
+            /tmp/pb_trust_compose_02_round_2.json \
+            /tmp/pb_trust_compose_02_round_3.json \
+            /tmp/pb_trust_compose_02_round_4.json \
+            /tmp/pb_trust_compose_02_round_5.json \
+            --json > /tmp/pb_trust_compose_02_median.json
+          python -m json.tool /tmp/pb_trust_compose_02_median.json
+
+      - name: Validate frozen oracle and fairness controls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_02_median.json').read_text())
+          assert report['benchmark_id'] == 'PB-TRUST-COMPOSE-02'
+          assert report['version'] == '0.1'
+          assert report['protocol'] == 'PB-TC02/v0.1 real-ipc-trust-transport'
+          assert report['rounds'] == 5
+          assert report['no_single_winner_score'] is True
+          assert report['compact_record_bytes'] == 42
+          assert report['result_record_bytes'] == 2
+          for scale in report['scale']:
+              systems = scale['systems']
+              for name in ('software_json', 'software_compact', 'proofbit_compact'):
+                  system = systems[name]
+                  assert system['oracle_accuracy'] == 1.0
+                  assert system['unsafe_authorization_dispatches'] == 0
+                  assert system['false_success_claims'] == 0
+                  assert system['missed_valid_dispatches'] == 0
+                  assert system['rounds'] == 5
+              assert systems['software_compact']['mean_payload_bytes'] == 42
+              assert systems['proofbit_compact']['mean_payload_bytes'] == 42
+              assert systems['software_compact']['total_ipc_payload_bytes'] == systems['proofbit_compact']['total_ipc_payload_bytes']
+          PY
