@@ -1,0 +1,100 @@
+name: pb-trust-compose-04
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-04
+
+jobs:
+  crash-recovery-benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Crash recovery tests
+        run: python -m unittest tests.test_pb_trust_compose_04 -v
+
+      - name: Execute PB-TRUST-COMPOSE-04
+        run: |
+          python benchmarks/pb_trust_compose_04.py \
+            --transactions 500 \
+            --rounds 5 \
+            --audit-sample 25 \
+            --json > /tmp/pb_trust_compose_04.json
+          python -m json.tool /tmp/pb_trust_compose_04.json
+
+      - name: Validate frozen recovery oracle and anti-strawman controls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_04.json').read_text())
+          assert report['benchmark_id'] == 'PB-TRUST-COMPOSE-04'
+          assert report['version'] == '0.1'
+          assert report['protocol'] == 'PB-TC04/v0.1 crash-recovery-audit'
+          assert report['rounds'] == 5
+          assert report['transactions_per_round'] == 500
+          assert report['record_bytes'] == 48
+          assert report['head_index_bytes_per_transaction'] == 8
+          assert report['no_single_winner_score'] is True
+
+          systems = report['systems']
+          for name in ('software_scan', 'software_indexed', 'proofbit_receipts'):
+              system = systems[name]
+              assert system['oracle_accuracy'] == 1.0
+              assert system['duplicate_side_effects_after_retry'] == 0
+              assert system['false_terminal_success'] == 0
+              assert system['ambiguous_terminal_states'] == 0
+              assert system['hard_crash_exit_codes'] == [97, 97, 97, 97, 97]
+
+          indexed = systems['software_indexed']['median']
+          proof = systems['proofbit_receipts']['median']
+          scan = systems['software_scan']['median']
+          assert indexed['persisted_journal_bytes'] == proof['persisted_journal_bytes']
+          assert indexed['persisted_index_bytes'] == proof['persisted_index_bytes']
+          assert indexed['persisted_total_bytes'] == proof['persisted_total_bytes']
+          assert indexed['targeted_audit_records_inspected'] == proof['targeted_audit_records_inspected']
+          assert scan['targeted_audit_records_inspected'] > indexed['targeted_audit_records_inspected']
+          PY
+
+      - name: Execute rotated-order TC04 stability run
+        run: |
+          python benchmarks/pb_trust_compose_04_stability.py \
+            --transactions 500 \
+            --rounds 11 \
+            --audit-sample 25 \
+            > /tmp/pb_trust_compose_04_stability.json
+          python -m json.tool /tmp/pb_trust_compose_04_stability.json
+
+      - name: Validate stability oracle and rotated ordering
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_04_stability.json').read_text())
+          assert report['benchmark_id'] == 'PB-TRUST-COMPOSE-04-STABILITY'
+          assert report['rounds'] == 11
+          assert report['transactions_per_round'] == 500
+          assert report['no_single_winner_score'] is True
+          assert len({tuple(order) for order in report['measurement_orders']}) == 3
+
+          systems = report['systems']
+          for name in ('software_scan', 'software_indexed', 'proofbit_receipts'):
+              system = systems[name]
+              assert system['oracle_accuracy'] == 1.0
+              assert system['duplicate_side_effects_after_retry'] == 0
+              assert system['false_terminal_success'] == 0
+              assert system['ambiguous_terminal_states'] == 0
+              assert system['hard_crash_exit_codes'] == [97] * 11
+
+          indexed = systems['software_indexed']
+          proof = systems['proofbit_receipts']
+          assert indexed['median_persisted_total_bytes'] == proof['median_persisted_total_bytes']
+          assert indexed['median_targeted_audit_records_inspected'] == proof['median_targeted_audit_records_inspected']
+          PY
