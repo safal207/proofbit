@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - main
+      - feat/pb-transition-01-morphos
 
 jobs:
   test:
@@ -35,6 +36,12 @@ jobs:
         run: python benchmarks/pb_ai_01.py --list-backends --json
       - name: PB-ARCH-01 reference smoke
         run: python benchmarks/pb_arch_01.py --decisions 10000 --contamination 0.10 --json
+      - name: PB-TRANSITION-01 reference smoke
+        run: python benchmarks/pb_transition_01.py --json
+      - name: PB-TRANSITION-02 common reference smoke
+        run: python benchmarks/pb_transition_02.py --trials 10000 --insufficient 0.10 --json
+      - name: PB-TRANSITION-03 trust matrix smoke
+        run: python benchmarks/pb_transition_03.py --trials 10000 --contamination 0.10 --json
 
   cross-architecture-capu:
     name: PB-ARCH-01 ProofBit vs CaPU
@@ -74,3 +81,144 @@ jobs:
             --contamination 0.10 \
             --capu-json /tmp/capu_pb_arch_01.json \
             --json
+
+  cross-architecture-morphos:
+    name: PB-TRANSITION-01 MORPHOS
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ProofBit
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned MORPHOS adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/COSMIC-ORGANICS
+          ref: 5ff088d647e315893a38a082ed27af07669177a1
+          path: external/COSMIC-ORGANICS
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Execute pinned MORPHOS PB-TRANSITION-01 adapter
+        run: |
+          (cd external/COSMIC-ORGANICS && python -m benchmarks.pb_transition_01) \
+            > /tmp/morphos_pb_transition_01.json
+          python -m json.tool /tmp/morphos_pb_transition_01.json
+
+      - name: Aggregate architecture transition scorecard
+        run: |
+          python benchmarks/pb_transition_01.py \
+            --morphos-json /tmp/morphos_pb_transition_01.json \
+            --json
+
+  common-transition-match:
+    name: PB-TRANSITION-02 common workload
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ProofBit
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned CaPU PT02 adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/CaPU
+          ref: b04c6bd2b5f9518d33a951184f18e98ebddfa714
+          path: external/CaPU
+
+      - name: Checkout pinned MORPHOS PT02 adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/COSMIC-ORGANICS
+          ref: 9e84fb812be4ec96ab08744dc43ae1e308ba8392
+          path: external/COSMIC-ORGANICS
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Execute CaPU common adapter
+        run: |
+          cargo run --quiet \
+            --manifest-path external/CaPU/rust/cmc-core/Cargo.toml \
+            --bin pb_transition_02 --locked -- \
+            --trials 10000 --insufficient 0.10 \
+            > /tmp/capu_pb_transition_02.json
+          python -m json.tool /tmp/capu_pb_transition_02.json
+
+      - name: Execute MORPHOS common adapter
+        run: |
+          (cd external/COSMIC-ORGANICS && \
+            python -m benchmarks.pb_transition_02 --trials 10000 --insufficient 0.10) \
+            > /tmp/morphos_pb_transition_02.json
+          python -m json.tool /tmp/morphos_pb_transition_02.json
+
+      - name: Aggregate five-system common scorecard
+        run: |
+          python benchmarks/pb_transition_02.py \
+            --trials 10000 \
+            --insufficient 0.10 \
+            --capu-json /tmp/capu_pb_transition_02.json \
+            --morphos-json /tmp/morphos_pb_transition_02.json \
+            --json > /tmp/pb_transition_02_scorecard.json
+          python -m json.tool /tmp/pb_transition_02_scorecard.json
+
+  trust-fault-match:
+    name: PB-TRANSITION-03 trust fault matrix
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout ProofBit
+        uses: actions/checkout@v4
+
+      - name: Checkout pinned CaPU PT03 adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/CaPU
+          ref: a0da246b5fa52331b81e182767ccfe5cb7b5a95e
+          path: external/CaPU
+
+      - name: Checkout pinned MORPHOS PT03 adapter
+        uses: actions/checkout@v4
+        with:
+          repository: safal207/COSMIC-ORGANICS
+          ref: 55ee39d9c248cb3b6f4f93359740e502ae9ad41e
+          path: external/COSMIC-ORGANICS
+
+      - name: Install Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Execute CaPU PB-TRANSITION-03 adapter
+        run: |
+          cargo run --quiet \
+            --manifest-path external/CaPU/rust/cmc-core/Cargo.toml \
+            --bin pb_transition_03 --locked -- \
+            --trials 10000 --contamination 0.10 \
+            > /tmp/capu_pb_transition_03.json
+          python -m json.tool /tmp/capu_pb_transition_03.json
+
+      - name: Execute MORPHOS PB-TRANSITION-03 adapter
+        run: |
+          (cd external/COSMIC-ORGANICS && \
+            python -m benchmarks.pb_transition_03 --trials 10000 --contamination 0.10) \
+            > /tmp/morphos_pb_transition_03.json
+          python -m json.tool /tmp/morphos_pb_transition_03.json
+
+      - name: Aggregate PB-TRANSITION-03 scorecard
+        run: |
+          python benchmarks/pb_transition_03.py \
+            --trials 10000 \
+            --contamination 0.10 \
+            --capu-json /tmp/capu_pb_transition_03.json \
+            --morphos-json /tmp/morphos_pb_transition_03.json \
+            --json > /tmp/pb_transition_03_scorecard.json
+          python -m json.tool /tmp/pb_transition_03_scorecard.json
