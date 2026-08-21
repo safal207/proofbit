@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter
-import json
 from pathlib import Path
-import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -13,44 +10,24 @@ if str(ROOT) not in sys.path:
 from benchmarks import pb_hw_02 as hw
 
 
-def recursive_cell_counts_from_json(path: Path, top: str) -> dict:
-    data = json.loads(path.read_text())
-    modules = data.get("modules", {})
-    if top not in modules:
-        raise ValueError(f"top module {top!r} absent from Yosys JSON")
-
-    def walk(module_name: str) -> Counter:
-        counts: Counter = Counter()
-        module = modules[module_name]
-        for cell in module.get("cells", {}).values():
-            cell_type = cell.get("type", "")
-            if cell_type in modules:
-                counts.update(walk(cell_type))
-            else:
-                counts[cell_type] += 1
-        return counts
-
-    counts = walk(top)
-    lut_cells = sum(v for k, v in counts.items() if re.fullmatch(r"LUT[1-6]", k))
-    ff_types = {"FDRE", "FDSE", "FDCE", "FDPE"}
-    ff_cells = sum(v for k, v in counts.items() if k in ff_types)
-    bram_cells = sum(v for k, v in counts.items() if k.startswith("RAMB18") or k.startswith("RAMB36"))
-    io_types = {"IBUF", "OBUF", "IOBUF", "BUFG"}
-    io_cells = sum(v for k, v in counts.items() if k in io_types)
-    total = sum(counts.values())
-    return {
-        "total_cells": total,
-        "core_cells_excluding_io": total - io_cells,
-        "io_cells": io_cells,
-        "lut_cells": lut_cells,
-        "ff_cells": ff_cells,
-        "bram_cells": bram_cells,
-        "cell_types": dict(sorted(counts.items())),
-        "cell_count_method": "recursive mapped-cell count through Yosys module hierarchy",
-    }
+def flat_yosys_xilinx(yosys: str, rtl: Path, top: str, out_json: Path) -> dict:
+    # Flatten only the benchmark's design hierarchy before technology mapping.
+    # This makes the wrapper/core hierarchy comparable without recursively
+    # descending into Yosys/Xilinx primitive simulation models such as FDRE.
+    script = (
+        f"read_verilog -sv {rtl}; "
+        f"hierarchy -check -top {top}; "
+        f"flatten; "
+        f"synth_xilinx -family xc7 -top {top}; "
+        f"write_json {out_json}"
+    )
+    hw.run_cmd([yosys, "-q", "-p", script])
+    row = hw.cell_counts_from_json(out_json, top)
+    row["cell_count_method"] = "design hierarchy flattened before synth_xilinx; mapped primitives counted at top"
+    return row
 
 
-hw.cell_counts_from_json = recursive_cell_counts_from_json
+hw.yosys_xilinx = flat_yosys_xilinx
 
 if __name__ == "__main__":
     raise SystemExit(hw.main())
