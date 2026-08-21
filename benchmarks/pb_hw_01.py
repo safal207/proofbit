@@ -99,7 +99,7 @@ def yosys_depth(yosys: str, rtl: Path, top: str) -> dict:
         f"read_verilog -sv {rtl}; "
         f"hierarchy -check -top {top}; proc; memory_map; opt; flatten; opt; ltp -noff"
     )
-    text = run_cmd([yosys, "-q", "-p", script])
+    text = run_cmd([yosys, "-p", script])
     return {
         "logic_depth_proxy": parse_ltp(text),
         "method": "yosys ltp -noff after proc/memory_map/opt/flatten",
