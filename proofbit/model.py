@@ -96,9 +96,21 @@ class ProofProcessor:
             else EpistemicState.PROVEN_FALSE
         )
 
-    def guarded_execute(self, address: int, *, single_use: bool = True) -> bool:
+    def guarded_execute(
+        self,
+        address: int,
+        *,
+        single_use: bool = True,
+        expected_statement: str | None = None,
+    ) -> bool:
         cell = self.load(address)
         if cell.evidence is None:
+            return False
+        # Side-effect authority is bound to the exact statement/action being
+        # executed. A valid proof for action A must not be silently rebound to
+        # action B. Check the binding before consuming the proof so a rejected
+        # rebinding attempt cannot burn an otherwise valid single-use grant.
+        if expected_statement is not None and cell.statement != expected_statement:
             return False
         state = self.verify(cell.evidence, consume=single_use)
         cell.state = state
