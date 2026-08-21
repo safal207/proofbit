@@ -1,0 +1,63 @@
+name: pb-hw-04
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-hw-04
+
+jobs:
+  physical-proof-memory-cache:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install open-source RTL tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y iverilog yosys
+          iverilog -V | head -n 2
+          yosys -V
+      - name: PB-HW-04 accounting tests
+        run: python -m unittest tests.test_pb_hw_04 -v
+      - name: Simulate and synthesize PB-HW-04
+        run: |
+          python benchmarks/pb_hw_04.py --json > /tmp/pb_hw_04.json
+          python -m json.tool /tmp/pb_hw_04.json
+      - name: Validate frozen PB-HW-04 oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/pb_hw_04.json').read_text())
+          assert r['benchmark_id']=='PB-HW-04'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-HW-04/v0.1 physical-proof-memory-cache-economics'
+          assert r['physical_memory_instantiated'] is True
+          assert r['depth_entries']==1024 and r['record_bits']==64 and r['parent_count']==4
+          assert r['primary_anti_strawman']=='multiport_conventional_cache'
+          assert r['no_single_winner_score'] is True
+
+          sim=r['simulation']
+          assert sim['failures']==0
+          cold=sim['cold_latency_cycles']; warm=sim['warm_latency_cycles']; conflict=sim['same_bank_conflict_latency_cycles']; inv=sim['post_invalidation_latency_cycles']
+          assert warm['multiport_conventional_cache'] < cold['multiport_conventional_cache']
+          assert warm['proofbit_cache'] == warm['multiport_conventional_cache']
+          assert conflict['banked_conventional'] > cold['banked_conventional']
+          assert conflict['multiport_conventional_cache'] < conflict['banked_conventional']
+          assert conflict['proofbit_cache'] == conflict['multiport_conventional_cache']
+          assert inv['proofbit_cache'] == inv['multiport_conventional_cache']
+
+          s=r['synthesis']
+          assert s['single_port_conventional']['physical_evidence_bits']==65536
+          assert s['banked_conventional']['physical_evidence_bits']==65536
+          assert s['multiport_conventional_cache']['physical_evidence_bits']==262144
+          assert s['proofbit_cache']['physical_evidence_bits']==262144
+          for row in s.values():
+              assert row['core_cells_excluding_io']>0
+              assert row['logic_depth_proxy']>0
+          eq=r['strong_conventional_vs_proofbit']
+          assert all(eq.values()),eq
+          PY
