@@ -36,11 +36,30 @@ This is a real process death and fresh-process restart. It is **not** a machine 
 
 ## Frozen workload
 
-The official run uses 500 transactions per round and five independent rounds. Transaction IDs deterministically rotate through the five terminal knowledge states, so each state has equal representation.
+The main fixture uses 500 transactions per round. Transaction IDs deterministically rotate through the five terminal knowledge states, so each state has equal representation.
 
 For `EXECUTED_OUTCOME_PROVEN`, half of outcome receipts are durable before the crash and half arrive after restart. `CONFLICT` receives one outcome before the crash and a contradictory outcome after restart.
 
 For every transaction that had already executed, a retry is delivered after restart. A second side effect is always an error.
+
+The workflow runs two measurement layers:
+
+1. a five-round full fixture used as an exploratory/regression measurement;
+2. an **11-round stability fixture** used for the official performance interpretation.
+
+## Stability and execution-order control
+
+A first five-round run showed a small apparent ProofBit recovery-throughput advantage. Because system order was fixed, that number is not treated as evidence of a crossover.
+
+The stability wrapper reruns the same one-round fixture 11 times and rotates execution order through all three system permutations:
+
+```text
+software_scan -> software_indexed -> proofbit_receipts
+software_indexed -> proofbit_receipts -> software_scan
+proofbit_receipts -> software_scan -> software_indexed
+```
+
+The official runtime conclusion is based on the median of this rotated-order 11-round run. Raw per-round throughput values are retained.
 
 ## Compared systems
 
@@ -126,7 +145,7 @@ targeted-audit records inspected
 authority re-establishment messages
 ```
 
-The official report uses medians over independent rounds for runtime and work-size metrics. Raw throughput values are retained.
+Medians are reported for runtime and work-size metrics. Performance claims use the rotated 11-round stability measurement rather than the first fixed-order five-round run.
 
 ## Targeted audit
 
