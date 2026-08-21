@@ -1,0 +1,86 @@
+name: pb-hw-02
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-hw-02
+
+jobs:
+  semantic-cost-curve:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install open-source RTL tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y iverilog yosys
+          iverilog -V | head -n 2
+          yosys -V
+
+      - name: PB-HW-02 accounting tests
+        run: python -m unittest tests.test_pb_hw_02 -v
+
+      - name: Simulate and synthesize PB-HW-02
+        run: |
+          python benchmarks/pb_hw_02.py --json > /tmp/pb_hw_02.json
+          python -m json.tool /tmp/pb_hw_02.json
+
+      - name: Validate frozen PB-HW-02 oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          r=json.loads(Path('/tmp/pb_hw_02.json').read_text())
+          assert r['benchmark_id']=='PB-HW-02'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-HW-02/v0.1 semantic-cost-curve'
+          assert r['primary_anti_strawman']=='full_conventional'
+          assert r['no_single_winner_score'] is True
+
+          sim=r['simulation']
+          assert sim['rich_safety_cases']==14
+          assert sim['minimal_failures']==0
+          assert sim['minimal_semantic_gap_accepts']==4
+          assert sim['conventional_failures']==0
+          assert sim['proofbit_failures']==0
+          assert sim['minimal_stream_dispatches']==32
+          assert sim['rich_transactions']==32
+          assert sim['trusted_terminal_effects']==16
+          assert sim['stalls']==0
+
+          m=r['synthesis']['minimal_capability']
+          c=r['synthesis']['full_conventional']
+          p=r['synthesis']['rich_proofbit']
+          assert m['guarantee_coverage']==5 and m['guarantee_total']==9
+          assert c['guarantee_coverage']==9 and p['guarantee_coverage']==9
+          assert m['logical_metadata_bits']==41
+          assert c['logical_metadata_bits']==60 and p['logical_metadata_bits']==60
+          assert m['logical_state_bits']==139
+          assert c['logical_state_bits']==278 and p['logical_state_bits']==278
+          assert m['transactions_per_trusted_terminal'] is None
+          assert c['transactions_per_trusted_terminal']==2
+          assert p['transactions_per_trusted_terminal']==2
+          for row in (m,c,p):
+              assert row['lut_cells'] > 0
+              assert row['ff_cells'] > 0
+              assert row['logic_depth_proxy'] > 0
+              assert row['core_cells_excluding_io'] > 0
+
+          marginal=r['marginal_full_evidence_cost_over_minimal']
+          assert marginal['added_guarantees']==4
+          assert marginal['metadata_bits_delta']==19
+          assert marginal['state_bits_delta']==139
+
+          # Structural equality is evidence, not an oracle assumption.
+          eq=r['full_conventional_vs_proofbit']
+          assert eq['same_metadata_bits'] is True
+          assert eq['same_state_bits'] is True
+          assert eq['same_guarantee_coverage'] is True
+          assert eq['same_terminal_transaction_cost'] is True
+          PY
