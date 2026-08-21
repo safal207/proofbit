@@ -27,7 +27,7 @@ jobs:
 
       - name: Simulate and synthesize PB-HW-02
         run: |
-          python benchmarks/pb_hw_02.py --json > /tmp/pb_hw_02.json
+          python benchmarks/pb_hw_02_runner.py --json > /tmp/pb_hw_02.json
           python -m json.tool /tmp/pb_hw_02.json
 
       - name: Validate frozen PB-HW-02 oracle
