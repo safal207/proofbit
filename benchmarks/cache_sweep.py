@@ -14,9 +14,10 @@ if str(ROOT) not in sys.path:
 from proofbit import CachedProofProcessor, Evidence, ProofProcessor
 
 
-def measure_requests(cpu, evidence_set, requests: int, rounds: int) -> dict:
+def measure_uncached(evidence_set, requests: int, rounds: int) -> dict:
     samples = []
     for _ in range(rounds):
+        cpu = ProofProcessor()
         start = time.perf_counter_ns()
         for i in range(requests):
             cpu.verify(evidence_set[i % len(evidence_set)], consume=False)
@@ -32,6 +33,36 @@ def measure_requests(cpu, evidence_set, requests: int, rounds: int) -> dict:
     }
 
 
+def measure_cached(evidence_set, requests: int, rounds: int) -> dict:
+    samples = []
+    total_hits = 0
+    total_misses = 0
+
+    for _ in range(rounds):
+        # New processor per round: cold-cache misses are counted every time.
+        cpu = CachedProofProcessor()
+        start = time.perf_counter_ns()
+        for i in range(requests):
+            cpu.verify(evidence_set[i % len(evidence_set)], consume=False)
+        elapsed = time.perf_counter_ns() - start
+        samples.append(elapsed / requests)
+        stats = cpu.cache_stats()
+        total_hits += stats.hits
+        total_misses += stats.misses
+
+    median = statistics.median(samples)
+    total = total_hits + total_misses
+    return {
+        "median_ns_per_request": median,
+        "requests_per_sec": 1_000_000_000 / median,
+        "min_ns_per_request": min(samples),
+        "max_ns_per_request": max(samples),
+        "cache_hits": total_hits,
+        "cache_misses": total_misses,
+        "cache_hit_rate": total_hits / total if total else 0.0,
+    }
+
+
 def modeled_total_ns(raw_ns: float, verification_cost_ns: int, miss_rate: float) -> float:
     return raw_ns + verification_cost_ns * miss_rate
 
@@ -42,13 +73,9 @@ def run_case(working_set: int, requests: int, rounds: int, verifier_costs: list[
         for i in range(working_set)
     ]
 
-    uncached = ProofProcessor()
-    uncached_perf = measure_requests(uncached, evidence, requests, rounds)
-
-    cached = CachedProofProcessor()
-    cached_perf = measure_requests(cached, evidence, requests, rounds)
-    stats = cached.cache_stats()
-    miss_rate = 1.0 - stats.hit_rate
+    uncached_perf = measure_uncached(evidence, requests, rounds)
+    cached_perf = measure_cached(evidence, requests, rounds)
+    miss_rate = 1.0 - cached_perf["cache_hit_rate"]
 
     modeled = []
     for cost in verifier_costs:
@@ -72,9 +99,9 @@ def run_case(working_set: int, requests: int, rounds: int, verifier_costs: list[
         "requests": requests,
         "uncached": uncached_perf,
         "cached": cached_perf,
-        "cache_hits": stats.hits,
-        "cache_misses": stats.misses,
-        "cache_hit_rate": stats.hit_rate,
+        "cache_hits": cached_perf["cache_hits"],
+        "cache_misses": cached_perf["cache_misses"],
+        "cache_hit_rate": cached_perf["cache_hit_rate"],
         "modeled_verifier_costs": modeled,
     }
 
@@ -83,10 +110,10 @@ def run(requests: int, rounds: int) -> dict:
     working_sets = [1, 8, 64, 1024]
     verifier_costs = [0, 1_000, 10_000, 100_000]
     return {
-        "benchmark_version": "0.2",
+        "benchmark_version": "0.2.1",
         "scope": (
-            "Python cache microbenchmark plus explicit verifier-cost model; "
-            "not silicon performance or a cryptographic benchmark"
+            "Cold-start-per-round Python cache microbenchmark plus explicit "
+            "verifier-cost model; not silicon performance or a cryptographic benchmark"
         ),
         "requests_per_case": requests,
         "rounds": rounds,
