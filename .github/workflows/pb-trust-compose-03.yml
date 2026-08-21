@@ -56,3 +56,32 @@ jobs:
                   assert systems['software_eager']['control_messages'] > systems['software_lazy']['control_messages']
                   assert systems['software_eager']['validation_events']['epoch_checks'] > systems['software_lazy']['validation_events']['epoch_checks']
           PY
+
+      - name: Focused depth-8 stability run
+        run: |
+          python benchmarks/pb_trust_compose_03.py \
+            --trials 2000 \
+            --contamination 0.15 \
+            --boundaries 8 \
+            --rounds 11 \
+            --json > /tmp/pb_trust_compose_03_depth8.json
+          python -m json.tool /tmp/pb_trust_compose_03_depth8.json
+
+      - name: Validate depth-8 stability oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_03_depth8.json').read_text())
+          assert report['rounds'] == 11
+          assert report['boundaries'] == [8]
+          systems = report['scale'][0]['systems']
+          for name in ('software_eager', 'software_lazy', 'proofbit_lazy'):
+              system = systems[name]
+              assert system['oracle_accuracy'] == 1.0
+              assert system['unsafe_authorization_dispatches'] == 0
+              assert system['false_success_claims'] == 0
+              assert system['missed_valid_dispatches'] == 0
+              assert system['replay_duplicates_accepted'] == 0
+          PY
