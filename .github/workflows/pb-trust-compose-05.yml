@@ -1,0 +1,67 @@
+name: pb-trust-compose-05
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-05
+
+jobs:
+  durable-corruption-benchmark:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: TC05 corruption tests
+        run: python -m unittest tests.test_pb_trust_compose_05 -v
+
+      - name: Execute PB-TRUST-COMPOSE-05
+        run: |
+          python benchmarks/pb_trust_compose_05.py \
+            --rounds 11 \
+            --json > /tmp/pb_trust_compose_05.json
+          python -m json.tool /tmp/pb_trust_compose_05.json
+
+      - name: Validate frozen corruption oracle and anti-strawman controls
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = json.loads(Path('/tmp/pb_trust_compose_05.json').read_text())
+          assert report['benchmark_id'] == 'PB-TRUST-COMPOSE-05'
+          assert report['version'] == '0.1'
+          assert report['protocol'] == 'PB-TC05/v0.1 durable-corruption-recovery'
+          assert report['rounds'] == 11
+          assert report['record_bytes'] == 56
+          assert report['head_index_bytes'] == 8
+          assert report['no_single_winner_score'] is True
+          assert len({tuple(order) for order in report['measurement_orders']}) == 3
+
+          systems = report['systems']
+          indexed = systems['software_indexed_integrity']
+          proof = systems['proofbit_receipts']
+
+          for name, system in systems.items():
+              assert system['oracle_accuracy'] == 1.0, name
+              assert system['silent_false_reconstruction'] == 0, name
+
+          # Primary anti-strawman controls must cover the same full indexed fault set.
+          assert indexed['applicable_cases_per_round'] == proof['applicable_cases_per_round'] == 8
+          assert indexed['fault_coverage'] == proof['fault_coverage'] == 1.0
+
+          # Same frozen storage topology and repair policy means any difference must
+          # not come from a hidden smaller ProofBit record or missing software checks.
+          assert indexed['median']['persisted_bytes'] == proof['median']['persisted_bytes']
+          assert indexed['median']['repair_scan_records'] == proof['median']['repair_scan_records']
+          assert indexed['median']['repair_writes'] == proof['median']['repair_writes']
+
+          for name in ('software_indexed_integrity', 'proofbit_receipts'):
+              cases = {c['fault']: c for c in systems[name]['case_results']}
+              assert cases['STATEMENT_REBOUND_IN_DURABLE_RECORD']['recovered_state'] == 'UNKNOWN'
+              assert cases['EPOCH_REBOUND_IN_DURABLE_RECORD']['recovered_state'] == 'UNKNOWN'
+              assert cases['DUPLICATE_CONFLICTING_OUTCOME_RECEIPT']['recovered_state'] == 'CONFLICT'
+          PY
