@@ -45,20 +45,26 @@ jobs:
           assert r['no_single_winner_score'] is True
 
           sim=r['simulation']
-          assert sim['failures']==0
-          cold=sim['cold_latency_cycles']; warm=sim['warm_latency_cycles']; conflict=sim['same_bank_conflict_latency_cycles']; inv=sim['post_invalidation_latency_cycles']
-          assert warm['multiport_conventional_cache'] < cold['multiport_conventional_cache']
-          assert warm['proofbit_cache'] == warm['multiport_conventional_cache']
-          assert conflict['banked_conventional'] > cold['banked_conventional']
-          assert conflict['multiport_conventional_cache'] < conflict['banked_conventional']
-          assert conflict['proofbit_cache'] == conflict['multiport_conventional_cache']
-          assert inv['proofbit_cache'] == inv['multiport_conventional_cache']
+          assert sim['checks']==52 and sim['failures']==0
+          cold=sim['cold_latency_cycles']; warm=sim['warm_latency_cycles']
+          conflict=sim['same_bank_conflict_latency_cycles']
+          conflict_warm=sim['same_bank_warm_latency_cycles']
+          inv=sim['post_invalidation_latency_cycles']
+          assert cold=={'single_port_conventional':4,'banked_conventional':2,'multiport_conventional_cache':2,'proofbit_cache':2}
+          assert warm=={'single_port_conventional':4,'banked_conventional':2,'multiport_conventional_cache':1,'proofbit_cache':1}
+          assert conflict=={'single_port_conventional':4,'banked_conventional':5,'multiport_conventional_cache':2,'proofbit_cache':2}
+          assert conflict_warm=={'single_port_conventional':4,'banked_conventional':5,'multiport_conventional_cache':1,'proofbit_cache':1}
+          assert inv=={'single_port_conventional':4,'banked_conventional':2,'multiport_conventional_cache':2,'proofbit_cache':2}
 
           s=r['synthesis']
           assert s['single_port_conventional']['physical_evidence_bits']==65536
           assert s['banked_conventional']['physical_evidence_bits']==65536
           assert s['multiport_conventional_cache']['physical_evidence_bits']==262144
           assert s['proofbit_cache']['physical_evidence_bits']==262144
+          assert s['single_port_conventional']['bram36_cells']==2
+          assert s['banked_conventional']['bram36_cells']==4
+          assert s['multiport_conventional_cache']['bram36_cells']==8
+          assert s['proofbit_cache']['bram36_cells']==8
           for row in s.values():
               assert row['core_cells_excluding_io']>0
               assert row['logic_depth_proxy']>0
