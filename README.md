@@ -1,172 +1,138 @@
 # ProofBit
 
-**Proof-native computing primitives for memory and processors.**
+**Proof-aware state and effect-boundary architecture for trustworthy computing.**
 
-> Bits should not only carry values. They should carry the evidence that makes those values usable as trusted state.
+> A machine should not treat a value as trusted state without preserving why that value may be relied on for a specific action, authority, context, and moment in time.
 
-ProofBit is an experimental computing model for representing data together with verifiable evidence, provenance, authority, and freshness.
-
-The project starts from a simple distinction:
+ProofBit is an executable research project for binding data and actions to explicit trust semantics:
 
 ```text
-data != fact
+statement
++ epistemic state
++ authority
++ epoch / freshness
++ provenance
++ replay identity
++ execution context
++ observed outcome
 ```
 
-A conventional bit stores a value:
+The core distinction is:
 
 ```text
-0 | 1
+data != established fact
+
+authorized dispatch != proven outcome
 ```
 
-A ProofBit stores a value together with the basis on which a machine may rely on it:
+## Status
+
+**v0.1 research release candidate.**
+
+The repository now includes:
+
+- a dependency-free Python semantic model;
+- deterministic adversarial benchmarks;
+- crash/recovery and durable-corruption fixtures;
+- Python/Rust/Node conformance tests;
+- OS privilege and effect-boundary experiments;
+- executable ISA/memory attack models;
+- synthesizable Verilog;
+- Icarus simulation;
+- Yosys Xilinx-7 structural mapping;
+- explicit positive, negative, and still-open claims.
+
+This is no longer only a concept sketch. It is also **not** a production processor, a cryptographic proof system, a formal proof of universal safety, or evidence that ProofBit is faster than CPUs, GPUs, TPUs, Cerebras, or other AI accelerators.
+
+Start with:
+
+- [`CLAIMS.md`](CLAIMS.md) — what is established, rejected, and still open;
+- [`NEGATIVE_RESULTS.md`](NEGATIVE_RESULTS.md) — results that narrowed or falsified stronger claims;
+- [`BENCHMARK_MATRIX.md`](BENCHMARK_MATRIX.md) — the executable evidence map;
+- [`POSITIONING.md`](POSITIONING.md) — how ProofBit relates to capabilities, tagged memory, attestation, and verifiable computing;
+- [`COMMERCIAL_WEDGE.md`](COMMERCIAL_WEDGE.md) — the near-term product and revenue path;
+- [`docs/roadmap.md`](docs/roadmap.md) — the engineering and go/no-go plan.
+
+## Honest positioning
+
+The closest current description is:
+
+> **ProofBit is a proof-aware capability/evidence architecture for binding state, authority, freshness, provenance, replay, and outcome at a machine-enforced effect boundary.**
+
+The benchmark program has repeatedly shown that strong conventional software, capability systems, tagged architectures, indexed logs, canonical contracts, and reference monitors can reproduce many individual ProofBit guarantees.
+
+Therefore the project does **not** claim that ordinary systems are incapable of implementing these checks.
+
+The remaining research question is narrower and more useful:
+
+> Can a standard proof-aware state and action contract reduce integration, composition, recovery, audit, or trusted-computing-base cost enough to justify a dedicated runtime, coprocessor, memory primitive, or ISA extension?
+
+## Core semantics
+
+A minimal logical ProofBit is:
 
 ```text
-0^pi | 1^pi
+PB = <statement, state, evidence_ref, provenance, authority, epoch, context, identity>
 ```
 
-where `pi` is verifiable evidence.
-
-Absence of evidence is **not** the same as falsehood. ProofBit therefore separates four epistemic states:
+Canonical epistemic states include:
 
 ```text
-1^pi  PROVEN_TRUE
-0^pi  PROVEN_FALSE
-?     UNKNOWN
-!     CONFLICT
+PROVEN_TRUE
+PROVEN_FALSE
+UNKNOWN
+CONFLICT
+STALE
+REPLAYED
+INVALID
 ```
 
-## Core model
+Absence of evidence is not falsehood. Authorization is not outcome. A value may remain readable for reasoning while being forbidden from driving a protected side effect.
 
-A minimal ProofBit can be represented as:
+The architectural chain is:
 
 ```text
-PB = <statement, value, proof, provenance, authority, epoch>
+ProofBit
+  -> ProofCell
+  -> ProofMemory
+  -> ProofProcessor
+  -> mandatory effect boundary
+  -> outcome evidence
+  -> receipt
 ```
 
-A value may be consumed as verified state only when its proof validates against the statement, authority, and epoch.
-
-```text
-Verify(statement, value, proof, authority, epoch) -> {valid, invalid}
-```
-
-This gives the first chain of abstractions:
-
-```text
-ProofBit -> ProofCell -> ProofMemory -> ProofProcessor
-```
-
-## Why this matters
-
-Modern systems already protect parts of computation with checksums, ECC, permissions, signatures, memory tags, capability systems, secure enclaves, and provenance metadata. ProofBit explores a different unifying question:
-
-> What if the machine tracked not only the value of state, but whether computation is justified in treating that value as established?
-
-That becomes especially interesting for:
-
-- AI-agent memory and tool execution
-- financial and smart-contract state transitions
-- safety-critical control systems
-- distributed systems with stale or conflicting observations
-- auditability and deterministic evidence
-- proof-aware processor and memory architecture research
-
-## Proof-native memory
-
-A ProofCell conceptually contains:
-
-```text
-VALUE
-STATUS
-PROOF_REF
-PROVENANCE
-AUTHORITY
-EPOCH
-```
-
-The proof does not have to be stored inline with every byte. A practical design can separate a normal data plane from a proof plane:
+A practical design does not need to widen every physical bit. The current architecture uses a dual-plane model:
 
 ```text
 DATA PLANE                  PROOF PLANE
------------                 ----------------
-address -> value            address -> proof_ref
-                            proof_ref -> evidence
-                            authority / epoch / status
+-----------                 -------------------------
+values                      statement / state
+registers                   evidence references
+ordinary caches             authority / epoch
+ordinary memory             provenance / context
+                            replay / outcome receipts
 ```
 
-This keeps ordinary storage compact while allowing selected state to carry stronger semantics.
+## What v0.1 has established
 
-## Proof-native processing
+The strongest results are architectural rather than brand-specific:
 
-A conventional processor computes:
+| Finding | Executable evidence |
+|---|---|
+| Validation separated from execution is bypassable | Application-only validation failed direct-call, stale-cache, replay, rebinding, and false-success cases |
+| Mandatory enforcement at the authoritative effect seam works | Conventional reference monitor and ProofBit both closed the frozen bypass set |
+| Canonical contracts reduce policy drift and release coordination | Shared conventional descriptors and ProofBit matched across Python, Rust, and Node |
+| Rich trust semantics have measurable RTL cost | Full evidence semantics required substantially more LUT/FF/state than a minimal capability |
+| A four-parent composition primitive is useful | `6 -> 2` instruction transactions and `4 -> 1` parent-read issue cycles versus scalar composition |
+| Physical parallel evidence access is not free | Four-read cached designs paid 4x logical evidence storage |
+| Caching reduces composition latency | Warm four-parent composition reached 1 cycle in the frozen RTL fixture |
+| Generic capability/cache benefits are not unique to ProofBit | Equally expressive conventional controls repeatedly matched ProofBit |
 
-```text
-A + B -> C
-```
+See [`BENCHMARK_MATRIX.md`](BENCHMARK_MATRIX.md) and [`NEGATIVE_RESULTS.md`](NEGATIVE_RESULTS.md).
 
-A proof-aware processor could compute:
+## Benchmark discipline
 
-```text
-(A, proof_A) + (B, proof_B) -> (C, derivation_C)
-```
-
-The important rule is that confidence cannot silently increase during computation. Unknown, stale, or conflicting inputs must not automatically become verified outputs.
-
-A future ProofProcessor may therefore expose proof-aware operations such as:
-
-```text
-PLOAD
-PSTORE
-PVERIFY
-PASSERT
-PINVALIDATE
-PAND
-POR
-PCMP
-```
-
-and gate sensitive side effects on verified state.
-
-## Example
-
-An AI agent writes:
-
-```text
-"The client approved payment."
-```
-
-A normal memory store may preserve the sentence without preserving whether it was observed, inferred, or fabricated.
-
-ProofBit would instead distinguish:
-
-```text
-statement: client_approved(payment_42)
-status:    PROVEN_TRUE
-proof:     signed_message_8821
-source:    client_identity_key
-epoch:     18432
-```
-
-from:
-
-```text
-statement: client_approved(payment_42)
-status:    UNKNOWN
-```
-
-The second value exists as information, but it does not receive the same authority as a verified fact.
-
-## Design principles
-
-1. **No silent promotion** — unverified state cannot become verified merely because it was copied or transformed.
-2. **False is not unknown** — `PROVEN_FALSE` requires evidence too.
-3. **Conflict is first-class** — contradictory valid evidence is preserved rather than silently collapsed.
-4. **Freshness matters** — a once-valid proof may become stale after its authority or epoch changes.
-5. **Derivations preserve provenance** — verified outputs must retain a machine-checkable path to the evidence that justified them.
-6. **Side effects require stronger grounding than internal computation** — privileged actions should be able to demand verified, fresh authority.
-
-## Benchmark program
-
-ProofBit is benchmarked on four separate axes:
+Every architecture is evaluated on separate axes:
 
 ```text
 Utility
@@ -175,61 +141,119 @@ Cost
 Speed
 ```
 
-The permanent control is a value-only `BaselineProcessor`. The external market reference set includes NVIDIA GB200 NVL72, Google TPU7x Ironwood, Cerebras WSE-3 / CS-3, AWS Trainium3, AMD Instinct MI450 Series, and OpenAI + Broadcom Jalapeno.
-
-Published hardware specifications are reference anchors only. A hardware system is not ranked against ProofBit until the same frozen workload has actually run on it.
-
-The north-star performance metric is:
+The north-star metric is:
 
 ```text
 Trusted Useful Throughput
-  = proven useful actions / end-to-end second
+  = correctly permitted useful actions with sufficient evidence
+    / end-to-end second
 ```
 
-Current benchmark families:
+Comparison order:
 
 ```text
-PB-MEM-01      proof-aware memory
-PB-VERIFY-01   explicit proof verification
-PB-CACHE-01    proof-cache reuse and invalidation
-PB-GUARD-01    contaminated decision streams
-PB-AI-01       inference-like compute + proof-aware agent action boundary
+semantic coverage
+-> correctness and safety inside that coverage
+-> evidence / audit quality
+-> cost and speed
 ```
 
-`PB-AI-01` is now executable on the dependency-free CPU reference backend and exposes explicit `not-run` adapter targets for CUDA/NVIDIA, JAX/TPU, Cerebras, AWS Neuron/Trainium, AMD ROCm, and OpenAI Jalapeno until real target environments are available.
+Raw throughput is not ranked across unlike workloads. Unsupported semantics are reported as unassessed, never counted as prevented. Strong conventional anti-strawman controls are mandatory.
 
-See:
+## Research track
+
+The remaining hardware work is deliberately short and decisive:
+
+1. **PB-HW-05 — Atomic Data + Evidence**  
+   Compare sidecar evidence memory, strong atomic tagged memory, and an integrated ProofBit cell under torn updates, rollback, DMA modification, and cache eviction.
+
+2. **PB-HW-06 — Root of Trust / Authenticity**  
+   Define who may mint evidence, how epochs remain monotonic, how rollback is blocked, and how device attestation binds to action and outcome receipts.
+
+3. **ProofBit-FPGA-01 — Board demonstrator**  
+   Measure real place-and-route fit, Fmax, latency, utilization, and an end-to-end guarded action on physical FPGA hardware.
+
+If strong conventional tagged memory again matches ProofBit and no system-level advantage appears, the hardware thesis will be narrowed to a protocol/runtime/conformance product rather than forced into a processor claim.
+
+## Commercial track
+
+The near-term product is **not a chip**.
+
+The commercial wedge is a proof-carrying action guard for consequential AI-agent operations:
 
 ```text
-docs/benchmark-methodology.md
-docs/benchmark-results-v0.2.md
-docs/market-benchmark-methodology.md
-docs/pb-ai-01.md
+agent intent
+-> authority and policy evidence
+-> exact request binding
+-> ACCEPT / REJECT / HOLD
+-> guarded execution
+-> observed outcome
+-> independently verifiable receipt
 ```
 
-## Repository structure
+Initial workflows:
+
+- production deployment;
+- IAM and infrastructure changes;
+- wallet and agentic-payment operations;
+- smart-contract administration;
+- critical automation and release actions.
+
+See [`COMMERCIAL_WEDGE.md`](COMMERCIAL_WEDGE.md).
+
+## Quick start
+
+Python reference tests:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Example trust-fault benchmark:
+
+```bash
+python benchmarks/pb_transition_03.py --json
+```
+
+RTL tools on Ubuntu/Debian:
+
+```bash
+sudo apt-get install -y iverilog yosys
+python benchmarks/pb_hw_04.py --json
+```
+
+Dedicated GitHub Actions workflows freeze the important benchmark oracles and resource mappings.
+
+## Repository map
 
 ```text
-proofbit/model.py                Reference value-only and proof-aware processors
-proofbit/cache.py                Context-bound Proof Cache
-proofbit/ai_workload.py          Portable PB-AI-01 workload contract
-benchmarks/compare.py            Baseline vs ProofProcessor microbenchmark
-benchmarks/contaminated.py       90/10 contaminated workload
-benchmarks/contamination_sweep.py Contamination-rate sweep
-benchmarks/cache_sweep.py        Proof Cache cost/reuse sweep
-benchmarks/pb_ai_01.py           Portable AI/agent benchmark runner
-benchmarks/hardware_reference.json Market accelerator registry
-benchmarks/market_matrix.py      Reference/executable market matrix
-docs/spec-v0.1.md                Minimal semantic model
-docs/architecture-v0.1.md        Memory and processor architecture sketch
-docs/roadmap.md                  Research and prototype plan
+proofbit/                      semantic reference model
+benchmarks/                    executable software, IPC, ISA, and RTL benchmarks
+rtl/                           synthesizable ProofBit research RTL and testbenches
+tests/                         regression and anti-strawman assertions
+docs/                          specifications, methodology, results, and roadmap
+.github/workflows/             reproducible benchmark jobs
 ```
 
-## Status
+Architecture details:
 
-**Executable research seed.** The repository now contains a semantic reference implementation, repeatable benchmarks, safety regression tests, Proof Cache experiments, a portable AI/agent workload, and a market benchmark frame. It is not yet a hardware implementation, a formal proof system, or a claim that every underlying mechanism is novel.
+- [`docs/spec-v0.1.md`](docs/spec-v0.1.md)
+- [`docs/architecture-v0.1.md`](docs/architecture-v0.1.md)
 
-The goal is to continuously move the ProofBit frontier toward:
+## Claim discipline
+
+ProofBit uses a claim ledger rather than marketing-by-benchmark:
+
+```text
+ESTABLISHED
+SUPPORTED BUT LIMITED
+NOT ESTABLISHED
+OPEN HYPOTHESIS
+```
+
+Negative results are first-class project output. If a conventional design reproduces a benefit, the benefit is attributed to the shared architecture, not renamed as a ProofBit win.
+
+The long-term objective remains:
 
 ```text
 Utility up
@@ -238,4 +262,4 @@ Cost down
 Speed up
 ```
 
-while keeping external comparisons reproducible and apples-to-apples.
+but only where the evidence supports it.
