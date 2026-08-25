@@ -1,0 +1,77 @@
+name: pb-hw-01
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-hw-01
+
+jobs:
+  rtl-semantic-equivalence:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install open-source RTL tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y iverilog yosys
+          iverilog -V | head -n 2
+          yosys -V
+
+      - name: PB-HW-01 parser/accounting tests
+        run: python -m unittest tests.test_pb_hw_01 -v
+
+      - name: Simulate and synthesize PB-HW-01
+        run: |
+          python benchmarks/pb_hw_01.py --json > /tmp/pb_hw_01.json
+          python -m json.tool /tmp/pb_hw_01.json
+
+      - name: Validate frozen PB-HW-01 oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          r=json.loads(Path('/tmp/pb_hw_01.json').read_text())
+          assert r['benchmark_id']=='PB-HW-01'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-HW-01/v0.1 rtl-semantic-equivalence'
+          assert r['primary_anti_strawman']=='capability'
+          assert r['no_single_winner_score'] is True
+
+          sim=r['simulation']
+          assert sim['safety_cases']==10
+          assert sim['raw_unsafe_accepts'] > 0
+          assert sim['capability_failures']==0
+          assert sim['proofbit_failures']==0
+          assert sim['stream_effects']==32
+          assert sim['latency_cycles']==1
+          assert sim['stalls']==0
+
+          cap=r['synthesis']['capability']
+          proof=r['synthesis']['proofbit']
+          assert cap['logical_metadata_bits']==59
+          assert proof['logical_metadata_bits']==59
+          assert cap['replay_table_bits']==139
+          assert proof['replay_table_bits']==139
+          assert cap['registered_stages']==2
+          assert proof['registered_stages']==2
+          assert cap['steady_state_cycles_per_effect']==1
+          assert proof['steady_state_cycles_per_effect']==1
+
+          # Synthesis equality is evidence, not an oracle assumption. We require only
+          # meaningful non-zero structural results from both strong controls.
+          for row in (cap,proof):
+              assert row['total_cells'] > 0
+              assert row['lut_cells'] > 0
+              assert row['ff_cells'] > 0
+              assert row['logic_depth_proxy'] > 0
+
+          eq=r['strong_control_equivalence']
+          assert eq['same_metadata_bits'] is True
+          assert eq['same_replay_table_bits'] is True
+          PY

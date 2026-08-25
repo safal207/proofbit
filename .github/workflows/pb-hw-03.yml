@@ -1,0 +1,87 @@
+name: pb-hw-03
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-hw-03
+
+jobs:
+  composition-economics:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install open-source RTL tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y iverilog yosys
+          iverilog -V | head -n 2
+          yosys -V
+
+      - name: PB-HW-03 accounting tests
+        run: python -m unittest tests.test_pb_hw_03 -v
+
+      - name: Simulate and synthesize PB-HW-03
+        run: |
+          python benchmarks/pb_hw_03.py --json > /tmp/pb_hw_03.json
+          python -m json.tool /tmp/pb_hw_03.json
+
+      - name: Validate frozen PB-HW-03 oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          r = json.loads(Path('/tmp/pb_hw_03.json').read_text())
+          assert r['benchmark_id'] == 'PB-HW-03'
+          assert r['version'] == '0.1'
+          assert r['protocol'] == 'PB-HW-03/v0.1 composition-economics'
+          assert r['parent_count'] == 4
+          assert r['primary_anti_strawman'] == 'vector_conventional'
+          assert r['no_single_winner_score'] is True
+          assert r['access_accounting']['physical_memory_instantiated'] is False
+
+          sim = r['simulation']
+          assert sim['safety_cases'] == 14
+          assert sim['scalar_failures'] == 0
+          assert sim['conventional_failures'] == 0
+          assert sim['proofbit_failures'] == 0
+          assert sim['scalar_stream_transactions'] == 96
+          assert sim['vector_stream_transactions'] == 32
+          assert sim['scalar_trusted_terminals'] == 16
+          assert sim['conventional_trusted_terminals'] == 16
+          assert sim['proofbit_trusted_terminals'] == 16
+          assert sim['stalls'] == 0
+
+          s = r['synthesis']['scalar_conventional']
+          c = r['synthesis']['vector_conventional']
+          p = r['synthesis']['proofbit_compose']
+          for row in (s, c, p):
+              assert row['guarantee_coverage'] == 9
+              assert row['guarantee_total'] == 9
+              assert row['logical_parent_reads_per_terminal'] == 4
+              assert row['logical_derived_writes_per_terminal'] == 1
+              assert row['logical_outcome_writes_per_terminal'] == 1
+              assert row['lut_cells'] > 0
+              assert row['ff_cells'] > 0
+              assert row['logic_depth_proxy'] > 0
+              assert row['core_cells_excluding_io'] > 0
+
+          assert s['instruction_transactions_per_trusted_terminal'] == 6
+          assert c['instruction_transactions_per_trusted_terminal'] == 2
+          assert p['instruction_transactions_per_trusted_terminal'] == 2
+          assert s['parent_read_issue_cycles'] == 4
+          assert c['parent_read_issue_cycles'] == 1
+          assert p['parent_read_issue_cycles'] == 1
+          assert r['primitive_vs_scalar']['instruction_transaction_reduction_x'] == 3.0
+          assert r['primitive_vs_scalar']['parent_read_issue_cycle_reduction_x'] == 4.0
+          assert r['primitive_vs_scalar']['logical_parent_reads_delta'] == 0
+          assert r['primitive_vs_scalar']['logical_total_writes_delta'] == 0
+
+          eq = r['vector_conventional_vs_proofbit']
+          assert all(eq.values()), eq
+          PY

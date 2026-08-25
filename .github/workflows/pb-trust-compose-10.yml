@@ -1,0 +1,84 @@
+name: pb-trust-compose-10
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-10
+
+jobs:
+  resource-privilege-bypass:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Privilege fixture preflight
+        run: |
+          id
+          id nobody
+          sudo -n true
+          sudo -n -u nobody true
+
+      - name: TC10 contract tests
+        run: python -m unittest tests.test_pb_trust_compose_10 -v
+
+      - name: Execute PB-TRUST-COMPOSE-10
+        run: |
+          python benchmarks/pb_trust_compose_10.py \
+            --rounds 11 \
+            --valid-requests 250 \
+            --json > /tmp/pb_trust_compose_10.json
+          python -m json.tool /tmp/pb_trust_compose_10.json
+
+      - name: Validate frozen privilege-bypass oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/pb_trust_compose_10.json').read_text())
+          assert r['benchmark_id']=='PB-TRUST-COMPOSE-10'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-TC10/v0.1 resource-privilege-bypass'
+          assert r['rounds']==11
+          assert r['primary_anti_strawman']=='software_os_reference_monitor'
+          assert r['same_privilege_probe_scored'] is False
+          assert r['no_single_winner_score'] is True
+          assert len(r['attacks'])==6
+          assert len({tuple(x) for x in r['measurement_orders']})==3
+          assert r['hostile_uid'] != r['protected_uid']
+
+          app=r['results']['application_owned_resource']
+          conventional=r['results']['software_os_reference_monitor']
+          proof=r['results']['proofbit_os_boundary']
+
+          assert app['attack_results_consistent_across_rounds'] is True
+          assert conventional['attack_results_consistent_across_rounds'] is True
+          assert proof['attack_results_consistent_across_rounds'] is True
+
+          # Application ownership exposes the resource to same-UID hostile code.
+          assert app['unsafe_resource_writes_per_round']==6
+          assert app['bypasses_blocked_per_round']==0
+          assert app['bypass_oracle_accuracy']==0.0
+
+          # Strong conventional OS isolation exactly matches software ProofBit.
+          for strong in (conventional,proof):
+              assert strong['unsafe_resource_writes_per_round']==0
+              assert strong['bypasses_blocked_per_round']==6
+              assert strong['bypass_oracle_accuracy']==1.0
+              assert strong['valid_path_availability']==1.0
+              assert strong['same_privilege_compromise_success_rate']==1.0
+              assert strong['broker_uid']==r['protected_uid']
+
+          surface=r['tcb_surface']
+          assert surface['software_os_reference_monitor']==surface['proofbit_os_boundary']
+          assert surface['application_owned_resource']['mandatory_os_uid_boundary']==0
+          assert surface['software_os_reference_monitor']['mandatory_os_uid_boundary']==1
+          assert surface['software_os_reference_monitor']['writable_handle_exposed_to_application'] is False
+          assert surface['proofbit_os_boundary']['writable_handle_exposed_to_application'] is False
+
+          # Valid control must remain available for every system.
+          assert app['valid_path_availability']==1.0
+          PY

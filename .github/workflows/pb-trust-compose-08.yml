@@ -1,0 +1,90 @@
+name: pb-trust-compose-08
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-08
+
+jobs:
+  independent-release-skew:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: TC08 unit tests
+        run: python -m unittest tests.test_pb_trust_compose_08 -v
+
+      - name: Execute PB-TRUST-COMPOSE-08
+        run: |
+          python benchmarks/pb_trust_compose_08.py \
+            --repeats-per-case 250 \
+            --rounds 11 \
+            --json > /tmp/pb_trust_compose_08.json
+          python -m json.tool /tmp/pb_trust_compose_08.json
+
+      - name: Validate frozen release-skew oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          r=json.loads(Path('/tmp/pb_trust_compose_08.json').read_text())
+          assert r['benchmark_id']=='PB-TRUST-COMPOSE-08'
+          assert r['version']=='0.1'
+          assert r['protocol']=='PB-TC08/v0.1 independent-release-skew'
+          assert r['languages']==['python','rust','node']
+          assert r['rounds']==11
+          assert r['token_bytes']==56 and r['policy_descriptor_bytes']==16
+          assert r['primary_anti_strawman']=='software_canonical_runtime'
+          assert r['no_single_winner_score'] is True
+          assert len({tuple(x) for x in r['measurement_orders']})==3
+
+          sr=r['scenario_results']
+          manual=sr['software_per_language_artifacts']
+          canonical=sr['software_canonical_runtime']
+          proof=sr['proofbit_contract']
+
+          # Every system is fail-closed on every invalid vector.
+          for system in sr.values():
+              for result in system.values():
+                  assert result['unsafe_accepts_per_round']==0
+                  assert result['fault_rejection_accuracy']==1.0
+
+          # Manual per-language policy ownership loses current-policy availability under skew.
+          assert manual['ALIGNED_V3']['valid_availability']==1.0
+          assert manual['SKEW_LATEST_V5']['valid_availability']==1/3
+          assert manual['SKEW_LATEST_V5']['cross_language_disagreements_per_round']==250
+          assert manual['NEGOTIATED_DOWNGRADE_V3']['valid_availability']==1.0
+          assert manual['ALIGNED_V5']['valid_availability']==1.0
+
+          # Strong canonical conventional control exactly matches ProofBit availability.
+          for name in ('ALIGNED_V3','SKEW_LATEST_V5','NEGOTIATED_DOWNGRADE_V3','ALIGNED_V5'):
+              assert canonical[name]['valid_availability']==1.0
+              assert proof[name]['valid_availability']==1.0
+              assert canonical[name]['cross_language_disagreements_per_round']==0
+              assert proof[name]['cross_language_disagreements_per_round']==0
+
+          # A genuinely new primitive invalidates descriptor-only evolution for both controls.
+          for system in (manual,canonical,proof):
+              assert system['NEW_PRIMITIVE_V6']['valid_availability']==0.0
+              assert system['NEW_PRIMITIVE_V6']['unsafe_accepts_per_round']==0
+
+          work=r['release_work']
+          assert work['software_canonical_runtime']==work['proofbit_contract']
+          assert work['software_per_language_artifacts']['trust_source_releases_v3_to_v5']==6
+          assert work['software_canonical_runtime']['descriptor_updates_v3_to_v5']==2
+          assert work['software_canonical_runtime']['v6_new_primitive_validator_updates_required']==3
+          assert work['proofbit_contract']['v6_new_primitive_validator_updates_required']==3
+
+          d=r['downgrade_tradeoff']
+          assert d['required_primitives_v5']==6 and d['required_primitives_v3']==4
+          assert abs(d['relative_guarantee_coverage']-(2/3))<1e-12
+          assert d['lost_guarantees']==['provenance','outcome']
+          PY

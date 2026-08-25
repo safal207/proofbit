@@ -1,0 +1,66 @@
+name: pb-trust-compose-07
+
+on:
+  pull_request:
+  push:
+    branches:
+      - feat/pb-trust-compose-07
+
+jobs:
+  cross-language-conformance:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: TC07 unit tests
+        run: python -m unittest tests.test_pb_trust_compose_07 -v
+
+      - name: Execute PB-TRUST-COMPOSE-07
+        run: |
+          python benchmarks/pb_trust_compose_07.py \
+            --repeats-per-case 1000 \
+            --rounds 11 \
+            --json > /tmp/pb_trust_compose_07.json
+          python -m json.tool /tmp/pb_trust_compose_07.json
+
+      - name: Validate frozen cross-language oracle
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('/tmp/pb_trust_compose_07.json').read_text())
+          assert report['benchmark_id']=='PB-TRUST-COMPOSE-07'
+          assert report['version']=='0.1'
+          assert report['protocol']=='PB-TC07/v0.1 cross-language-conformance'
+          assert report['languages']==['python','rust','node']
+          assert report['rounds']==11
+          assert report['token_bytes']==56
+          assert report['policy_descriptor_bytes']==16
+          assert int(report['high64_statement_hex'],16)>2**53-1
+          assert len(report['cases'])==14
+          assert report['primary_anti_strawman']=='software_canonical_contract'
+          assert report['no_single_winner_score'] is True
+          assert len({tuple(x) for x in report['measurement_orders']})==3
+          for name,result in report['runtime'].items():
+              assert result['oracle_accuracy']==1.0,name
+              assert result['unsafe_accepts']==0,name
+              assert result['missed_valid']==0,name
+              assert result['cross_language_disagreements']==0,name
+          work=report['evolution_work']
+          manual=work['software_per_language']
+          canonical=work['software_canonical_contract']
+          proof=work['proofbit_contract']
+          assert manual['validator_source_updates']==12
+          assert canonical==proof
+          assert canonical['descriptor_updates']==4
+          assert canonical['validator_source_updates']==0
+          assert canonical['language_conformance_invocations']==12
+          assert canonical['wire_token_bytes']==proof['wire_token_bytes']==56
+          PY
